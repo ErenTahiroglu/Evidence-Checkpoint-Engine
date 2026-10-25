@@ -22,9 +22,11 @@ This document records foundational references, authoritative specifications, and
 - **RFC 8785 — JSON Canonicalization Scheme (JCS):** <https://www.rfc-editor.org/rfc/rfc8785.html>
 - **RFC 7493 — The I-JSON Message Format:** <https://www.rfc-editor.org/rfc/rfc7493.html>
 - **JSON Schema Draft 2020-12 Specification:** <https://json-schema.org/draft/2020-12>
+- **JSON Schema Draft 2020-12 Defined Formats & Assertions:** <https://json-schema.org/draft/2020-12/json-schema-validation.html#name-defined-formats>
 - **SLSA Provenance Specification (v1.0):** <https://slsa.dev/spec/v1.0/provenance>
 - **in-toto Attestation Framework:** <https://in-toto.io/>
 - **Sigstore Architecture and Documentation:** <https://docs.sigstore.dev/>
+- **GitHub-Hosted Runners Documentation:** <https://docs.github.com/en/actions/reference/runners/github-hosted-runners>
 - **GitHub REST API — Workflow Jobs:** <https://docs.github.com/en/rest/actions/workflow-jobs>
 - **GitHub Protected Branches Documentation:** <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches>
 - **GitHub Artifact Attestations Documentation:** <https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations>

@@ -18,20 +18,6 @@
     "declared_by": "Eren Tahiroğlu",
     "role": "developer"
   },
-  "ci_evidence": {
-    "workflow_path": ".github/workflows/ci.yml",
-    "run_id": "40144852713",
-    "run_attempt": 1,
-    "event": "push",
-    "head_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
-    "actual_checkout_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
-    "expected_jobs": ["test", "lint", "verify-license"],
-    "observed_jobs": [
-      { "name": "test", "status": "completed", "conclusion": "success" },
-      { "name": "lint", "status": "completed", "conclusion": "success" },
-      { "name": "verify-license", "status": "completed", "conclusion": "success" }
-    ]
-  },
   "governance": {
     "related_issues": [1, 2],
     "decision_refs": ["ADR-001", "ADR-002", "ADR-003", "ADR-004"]

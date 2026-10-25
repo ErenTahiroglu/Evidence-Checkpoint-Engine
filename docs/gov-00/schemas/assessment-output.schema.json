@@ -1,13 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
-  "title": "Evidence Checkpoint Assessment Output Contract (Draft)",
+  "title": "Evidence Checkpoint Assessment Output Contract (Draft R1)",
   "description": "Schema for deterministic verification assessments emitted by Evidence-Checkpoint-Engine. Separates machine-assessed facts from declared claims, independent reviews, and human authorization.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "assessment_id",
+    "evaluator_auth",
     "engine",
     "evaluation_timestamp",
     "evaluated_target",
@@ -15,6 +16,7 @@
     "derived_summary",
     "claims_breakdown",
     "checks_performed",
+    "checks_omitted",
     "exit_code"
   ],
   "properties": {
@@ -26,6 +28,28 @@
       "type": "string",
       "pattern": "^[a-zA-Z0-9_\\-\\.:]{1,64}$"
     },
+    "evaluator_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_context", "is_synthetic_mock"],
+      "properties": {
+        "execution_context": {
+          "type": "string",
+          "enum": [
+            "LOCAL_SUBPROCESS_PIPE",
+            "DETACHED_CRYPTOGRAPHIC_SIGNATURE",
+            "SYNTHETIC_MOCK_UNTRUSTED"
+          ]
+        },
+        "is_synthetic_mock": {
+          "type": "boolean",
+          "description": "True if this record was generated as an illustrative mock rather than genuine verifier output."
+        },
+        "signature_reference": {
+          "type": "string"
+        }
+      }
+    },
     "engine": {
       "type": "object",
       "additionalProperties": false,
@@ -34,12 +58,13 @@
         "name": { "type": "string", "enum": ["Evidence-Checkpoint-Engine"] },
         "version": { "type": "string" },
         "canonicalization_standard": { "type": "string", "enum": ["RFC8785"] },
-        "build_commit": { "type": "string" }
+        "build_commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" }
       }
     },
     "evaluation_timestamp": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
     },
     "evaluated_target": {
       "type": "object",
@@ -52,10 +77,10 @@
         "evaluated_checkpoint_id"
       ],
       "properties": {
-        "repository_id": { "type": "string", "pattern": "^[0-9]{1,20}$" },
+        "repository_id": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
         "repository_owner": { "type": "string" },
         "repository_name": { "type": "string" },
-        "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
         "evaluated_checkpoint_id": { "type": "string" }
       }
     },
@@ -229,10 +254,46 @@
         "human_authorized"
       ],
       "properties": {
-        "source_declared": { "type": "object" },
-        "machine_assessed": { "type": "object" },
-        "independently_reviewed": { "type": "object" },
-        "human_authorized": { "type": "object" }
+        "source_declared": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["claimed_phase", "claimed_producer"],
+          "properties": {
+            "claimed_phase": { "type": "string" },
+            "claimed_producer": { "type": "string" },
+            "claimed_checkpoint_id": { "type": "string" }
+          }
+        },
+        "machine_assessed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha_verified", "repo_id_matched", "schema_conformant"],
+          "properties": {
+            "sha_verified": { "type": "boolean" },
+            "repo_id_matched": { "type": "boolean" },
+            "schema_conformant": { "type": "boolean" },
+            "digest_verified": { "type": "boolean" }
+          }
+        },
+        "independently_reviewed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["review_verdict"],
+          "properties": {
+            "review_verdict": { "type": "string" },
+            "reviewer": { "type": "string" },
+            "audit_scope": { "type": "string" }
+          }
+        },
+        "human_authorized": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authorized"],
+          "properties": {
+            "authorized": { "type": "boolean" },
+            "owner_signature_ref": { "type": ["string", "null"] }
+          }
+        }
       }
     },
     "checks_performed": {
@@ -245,8 +306,8 @@
     },
     "exit_code": {
       "type": "integer",
-      "minimum": 0,
-      "maximum": 255
+      "enum": [0, 1, 2, 3, 4],
+      "description": "0=Clean verification pass, 1=Limitations or warnings (ASSESSED_LIMITATIONS), 2=Verification failure (ASSESSED_FAIL), 3=Schema rejection/malformed (REFUSED), 4=Execution error."
     }
   }
 }
