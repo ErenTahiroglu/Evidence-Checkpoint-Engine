@@ -1,0 +1,49 @@
+# Never commit credentials, confidential evidence, private machine data
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*.token
+*credentials*
+*secret*
+
+# Raw/logged data, downloads, generated results, archives
+artifacts/
+archives/
+backups/
+private/
+secrets/
+raw-evidence/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.zip
+*.tar.gz
+*.tgz
+
+# Build/cache
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+target/
+bin/
+dist/
+build/
+coverage/
+*.py[cod]
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary
+*.tmp
+*.swp
+*.bak
