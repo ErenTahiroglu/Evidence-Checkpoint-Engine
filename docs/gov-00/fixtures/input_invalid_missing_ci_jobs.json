@@ -19,11 +19,13 @@
   },
   "ci_evidence": {
     "workflow_path": ".github/workflows/ci.yml",
-    "run_id": "40144852713",
+    "run_id": "10000000001",
     "run_attempt": 1,
     "event": "push",
     "head_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
     "actual_checkout_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "expected_policy_ref": "docs/gov-00/policies/standard-ci-policy-v1.json",
+    "expected_policy_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "expected_jobs": ["test", "lint", "security-audit"],
     "observed_jobs": [
       { "name": "test", "status": "completed", "conclusion": "success" }

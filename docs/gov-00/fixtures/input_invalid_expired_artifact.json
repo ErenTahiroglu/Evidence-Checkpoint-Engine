@@ -21,15 +21,14 @@
     {
       "artifact_name": "build-output-expired",
       "artifact_id": "12345678",
-      "run_id": "40144852713",
+      "run_id": "10000000001",
       "run_attempt": 1,
       "digest_algorithm": "sha256",
       "digest_value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "size_bytes": 1024,
       "upload_timestamp": "2026-06-01T00:00:00Z",
       "retention_days": 90,
-      "is_archive": false,
-      "observed_availability": "EXPIRED"
+      "is_archive": false
     }
   ],
   "integrity": {

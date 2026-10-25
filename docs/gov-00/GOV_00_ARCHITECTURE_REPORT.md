@@ -1,11 +1,11 @@
-# GOV-00 Comprehensive Architecture Report (Revision R1)
+# GOV-00 Comprehensive Architecture Report (Revision R2)
 
-> **Milestone:** `GOV-00 R1` — Independent Red Team Findings Remediation
+> **Milestone:** `GOV-00 R2` — Final Schema and Evidence-Authority Contract Correction
 > **Status:** `PROPOSED / READY FOR INDEPENDENT RED TEAM REVIEW`
 > **Date:** `2026-10-25`
 > **Repository:** `ErenTahiroglu/Evidence-Checkpoint-Engine` (REST ID: `1432704795`)
 > **Target Branch:** `development` (Frozen baseline: `main` at `bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02`)
-> **Expected Development Baseline:** `8cd92784792f6ab9ab45e4b65920bf0f2f55b6a9`
+> **Expected Development Baseline:** `bad43f5ad446bb0879a5c7f09fc1307128fc93a9`
 > **Primary Tracking Issue:** [#2 (GOV-00)](https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/issues/2)
 
 ---

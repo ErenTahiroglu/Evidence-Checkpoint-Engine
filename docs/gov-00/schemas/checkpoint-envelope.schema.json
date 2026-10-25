@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/checkpoint-envelope.schema.json",
+  "title": "Evidence Checkpoint Canonical Envelope Contract (Draft R2)",
+  "description": "Outer canonical envelope schema wrapping an evidence checkpoint input payload with its RFC 8785 content-addressed SHA-256 digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_version",
+    "payload",
+    "envelope_manifest_digest"
+  ],
+  "properties": {
+    "envelope_version": {
+      "type": "string",
+      "enum": ["0.1.0-draft"],
+      "description": "Schema version of the canonical transport envelope."
+    },
+    "payload": {
+      "$ref": "checkpoint-input.schema.json",
+      "description": "The exact checkpoint input payload object. Preimage for RFC 8785 canonical serialization and hashing."
+    },
+    "envelope_manifest_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Prefixed SHA-256 digest over the raw UTF-8 bytes produced by RFC 8785 canonical serialization of the payload object."
+    }
+  }
+}

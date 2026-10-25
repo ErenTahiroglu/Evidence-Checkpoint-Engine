@@ -1,7 +1,7 @@
-# Contract Specification and Canonical Serialization (RFC 8785)
+# Contract Specification, Canonical Serialization (RFC 8785) & Two-Schema Envelope
 
-> **Milestone:** `GOV-00 R1`
-> **Status:** `PROPOSED SPECIFICATION / REMEDIATED DRAFT FOR REVIEW`
+> **Milestone:** `GOV-00 R2`
+> **Status:** `PROPOSED SPECIFICATION / REMEDIATED CONTRACT DRAFT`
 > **Primary References:** [RFC 8785 (JCS)](https://www.rfc-editor.org/rfc/rfc8785.html), [RFC 7493 (I-JSON)](https://www.rfc-editor.org/rfc/rfc7493.html), [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12)
 
 ---
@@ -53,21 +53,24 @@ Any verifier implementation in this engine must strictly enforce the following R
 JavaScript's `Number` type is an IEEE-754 double-precision float. The maximum safe integer is:
 $$\text{Number.MAX\_SAFE\_INTEGER} = 2^{53} - 1 = 9{,}007{,}199{,}254{,}740{,}991$$
 
-GitHub numeric identifiers can exceed this boundary:
+GitHub numeric identifiers frequently exceed or monotonically approach this boundary:
 - Workflow Run IDs (e.g. `40144852713` currently fits in 53 bits, but increases monotonically across all GitHub Actions).
 - GitHub Artifact IDs and Database Node IDs.
-- Potential 64-bit integer timestamps or internal hashes.
+- High-range integer timestamps or internal hashes.
 
 If an unhardened JSON parser parses a 64-bit integer exceeding $2^{53}-1$ as an IEEE-754 double, the value is silently rounded to the nearest representable float, **altering the numeric identifier without warning and invalidating cryptographic digests**.
 
-### 3.2 Canonical Decimal String Specification
+### 3.2 Canonical Decimal String Specification & Validation Roles
 To eliminate ambiguity, precision loss, and representation mismatch across all platforms:
 1. **String Type:** All external GitHub numeric identifiers (`github_rest_id`, `run_id`, `artifact_id`) **must be encoded as JSON strings**, never JSON numbers.
-2. **Canonical Pattern:** Identifiers must strictly conform to regex `^[1-9][0-9]{0,19}$`.
-   - **No leading zeros:** Strings like `"0123"` are strictly forbidden.
-   - **Non-zero:** System IDs are positive non-zero integers.
-   - **Upper bound:** Maximum 20 digits, bounded by the maximum unsigned 64-bit integer ($\text{uint64::MAX} = 18{,}446{,}744{,}073{,}709{,}551{,}615$). Values exceeding $\text{uint64::MAX}$ fail schema validation.
-3. **No Intermediate Float Parsing:** Downstream consumers (including JavaScript/TypeScript UIs) must parse these fields as strings or native `BigInt` types, never via `Number()` or standard floating-point `JSON.parse` conversions.
+2. **Lexical Regex Role (`^[1-9][0-9]{0,19}$`):**
+   - Strictly enforces canonical formatting: positive integer, non-zero, no leading zeros (e.g., `"0123"` is rejected), no negative signs (`"-1"`), no decimal points (`"1.0"`), no exponents (`"1e5"`), no whitespace (`" 123 "`), and maximum 20 digits.
+   - **Scope Clarification:** The lexical regex alone **does not** enforce the exact numerical upper bound of $2^{64}-1$. 20-digit strings like `"18446744073709551616"` ($2^{64}$) and `"99999999999999999999"` match the regex pattern.
+3. **Mandatory Semantic Bound (`uint64::MAX`):**
+   - The engine implementation contract mandates an explicit semantic range check $[1, 18{,}446{,}744{,}073{,}709{,}551{,}615]$.
+   - Any value exceeding $\text{uint64::MAX}$ must be rejected fail-closed during semantic verification.
+   - Tested by explicit adversarial fixtures: `input_invalid_uint64_overflow_edge.json` ($2^{64}$) and `input_invalid_uint64_twenty_nines.json`.
+4. **No Intermediate Float Parsing:** Consumers and engine runtimes must parse these identifiers directly into 64-bit unsigned integers or strings, never converting through IEEE-754 floating-point representations.
 
 ---
 
@@ -88,67 +91,100 @@ To ensure strict, fail-closed validation:
 
 ---
 
-## 5. Normative Digest Calculation: The Outer Envelope Protocol
+## 5. The Two-Schema Architecture and Outer Canonical Envelope
 
-### 5.1 Rejection of In-Document Exclusion
-Previous drafts considered two hashing mechanisms: an external envelope `{payload, digest}` versus an in-document field exclusion (calculating a digest over a document while omitting `integrity.envelope_manifest_digest`).
+### 5.1 Clear Two-Schema Separation
+`Evidence-Checkpoint-Engine` defines two distinct, formal Draft 2020-12 schemas:
+1. **`checkpoint-input.schema.json` (Inner Payload Schema):**
+   Defines the structure of the checkpoint metadata payload (repository identity, commit SHA, Git hash algorithm, producer, governance, and CI evidence).
+2. **`checkpoint-envelope.schema.json` (Outer Canonical Envelope Schema):**
+   Wraps the checkpoint input payload with its RFC 8785 content-addressed SHA-256 digest:
+   ```json
+   {
+     "$schema": "https://json-schema.org/draft/2020-12/schema",
+     "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/checkpoint-envelope.schema.json",
+     "title": "Evidence Checkpoint Canonical Envelope Contract (Draft R2)",
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["envelope_version", "payload", "envelope_manifest_digest"],
+     "properties": {
+       "envelope_version": { "type": "string", "enum": ["0.1.0-draft"] },
+       "payload": { "$ref": "checkpoint-input.schema.json" },
+       "envelope_manifest_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+     }
+   }
+   ```
 
-**Normative Decision in R1:** The in-document exclusion mechanism is **formally rejected**. It introduces:
-- Risk of ambiguous field exclusion paths across nested schemas.
-- Brittle parser edge-cases if serializers omit or reorder the excluded property.
-- Silent fallback bugs where unauthenticated documents are mistaken for authenticated documents.
+### 5.2 Verifier Entry Point Semantics
+1. **Primary Verifier Entry Point (Production Verification):**
+   - **Requires Envelope:** Accepts only documents conforming to `checkpoint-envelope.schema.json`.
+   - **Rejection of Bare Payloads:** If a caller submits a bare payload directly to the primary verifier entry point, the engine rejects the request fail-closed with Exit Code `3` (`REFUSED`), requiring an authenticated envelope.
+2. **Declaration / Linting Entry Point (Candidate Inspection):**
+   - Can inspect a bare candidate payload (`checkpoint-input.schema.json`) for syntax and schema conformance.
+   - Emits an explicit warning that the input is an unauthenticated, unverified candidate declaration (`SOURCE_DECLARED`).
 
-### 5.2 The Outer Envelope Protocol (Single Normative Mechanism)
-All evidence checkpoints submitted for cryptographic verification must use the **External Canonical Envelope**:
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "envelope_version": "0.1.0-draft",
-  "payload": {
-    "schema_version": "0.1.0-draft",
-    "checkpoint_id": "ece-bootstrap-00-baseline",
-    "phase": "BOOTSTRAP-00",
-    "timestamp": "2026-10-25T03:37:58Z",
-    "repository": {
-      "owner": "ErenTahiroglu",
-      "name": "Evidence-Checkpoint-Engine",
-      "github_rest_id": "1432704795"
-    },
-    "source": {
-      "commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
-      "git_hash_algorithm": "sha1",
-      "branch": "development"
-    },
-    "producer": {
-      "declared_by": "Eren Tahiroglu",
-      "role": "developer"
-    },
-    "integrity": {
-      "canonicalization_algorithm": "RFC8785",
-      "digest_algorithm": "sha256"
-    }
-  },
-  "envelope_manifest_digest": "sha256:d5a1b3..."
-}
-```
-
-### 5.3 Deterministic Preimage Specification
+### 5.3 Deterministic Preimage and Digest Specification
 1. **Preimage Input:** The exact JSON object value associated with the outer envelope's `payload` key.
-2. **Field Inclusions / Exclusions:** 100% of the `payload` fields are included. Zero field exclusions are performed.
-3. **Serialization:** The `payload` object is serialized into bytes using RFC 8785 (JCS).
-4. **Preimage Bytes:** The raw UTF-8 bytes output by RFC 8785 canonicalization.
-5. **Digest Algorithm:** SHA-256.
-6. **Digest String Format:** `"sha256:<64-lowercase-hexadecimal-characters>"`.
-7. **Schema Version Binding:** The inner payload explicitly declares `"schema_version": "0.1.0-draft"`. If the schema version is unrecognized, the verifier refuses processing before digest evaluation.
-8. **Unknown Fields:** The payload schema enforces `additionalProperties: false`. Unknown fields result in immediate schema rejection.
-9. **Future Cryptographic Signatures:** In later milestones (GOV-04), cryptographic signatures sign the raw 32-byte binary SHA-256 digest of the canonical `payload` bytes, directly referencing `envelope_manifest_digest`.
+2. **Field Inclusions / Exclusions:** 100% of the `payload` fields are included. Zero field exclusions are performed. Outer envelope fields (`envelope_version`, `envelope_manifest_digest`) are strictly external to `payload` and are never part of the preimage.
+3. **Serialization:** The `payload` object is serialized into raw UTF-8 bytes using RFC 8785 (JCS).
+4. **Digest Calculation:** SHA-256 is computed over the RFC 8785 bytes.
+5. **Digest String Format:** `"sha256:<64-lowercase-hexadecimal-characters>"`.
+6. **Comparison:** Constant-time comparison between the computed digest string and `envelope_manifest_digest`. Any discrepancy fails closed with `ASSESSED_FAIL` ($D_{\text{integrity}} = \text{INVALID}$, Exit Code `2`).
+7. **No Self-Referential / Recursive Hashing:** The digest is never computed over the envelope itself, eliminating recursive hashing paradoxes.
+8. **Reproducible Test Vectors:**
+   - Positive Synthetic Envelope: [`docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json`](fixtures/envelope_valid_bootstrap_checkpoint.json) contains the verified RFC 8785 digest:
+     `sha256:157aaebc73d8daecfc07aa8e8b706fdcd1d4b5909d55442144a194734c20199d`.
+   - Negative Tampered Envelope: [`docs/gov-00/fixtures/envelope_invalid_tampered_digest.json`](fixtures/envelope_invalid_tampered_digest.json).
 
 ---
 
-## 6. Git Hash Agility: SHA-1 versus SHA-256
+## 6. Authoritative CI-Policy Provenance & Expected Checks
 
-### 6.1 Algorithmic Invariants
+### 6.1 The Policy Provenance Hierarchy
+A major vulnerability in naive provenance manifests is allowing the producer to dictate its own `expected_jobs`. To establish true independent verification, the engine distinguishes five levels of policy evidence:
+
+```
++-------------------------------------------------------------+
+| 1. Developer-Proposed Policy Reference                      |
+| (Declared path/ID in manifest: SOURCE_DECLARED, untrusted)  |
++-------------------------------------------------------------+
+                              |
+                              v (Matched against Root of Trust)
++-------------------------------------------------------------+
+| 2. Independently Trusted Policy Identity                    |
+| (Pre-configured approved policy reference in repository)     |
++-------------------------------------------------------------+
+                              |
+                              v (Content Digest Verification)
++-------------------------------------------------------------+
+| 3. Authenticated Policy Contents                            |
+| (SHA-256 digest matches expected_policy_digest)             |
++-------------------------------------------------------------+
+                              |
+                              v (Extract Required Check Names)
++-------------------------------------------------------------+
+| 4. Authoritative Expected Checks List                       |
+| (Mandatory checks required for verification pass)           |
++-------------------------------------------------------------+
+                              |
+                              v (Compare against CI Observations)
++-------------------------------------------------------------+
+| 5. Actual CI Observation Evaluation                         |
+| (100% of expected checks must have status: completed and    |
+| conclusion: success on the exact checkout SHA)              |
++-------------------------------------------------------------+
+```
+
+### 6.2 Trust Boundary Invariants
+1. **Producer Digest is Not Authority:** Supplying `expected_policy_digest` in the manifest does **not** authenticate the policy. The verifier must verify that the policy digest matches a locally pinned or authoritatively approved baseline.
+2. **Missing Policy Rejection:** In `checkpoint-input.schema.json`, `expected_policy_ref` and `expected_policy_digest` are **mandatory** whenever `ci_evidence` is provided. Submitting CI checks without policy references fails schema validation (`input_invalid_ci_missing_policy.json`).
+3. **Offline Policy Handling:** If the verifier operates offline and cannot resolve the trusted policy root, it cannot assign `VERIFIED_PASS`. It fails closed to `INSUFFICIENT_EVIDENCE` (Exit Code `3`).
+4. **Untrusted Policy Rejection:** If the policy digest does not match the approved baseline, the verifier emits `ASSESSED_FAIL` (Exit Code `2`, `input_invalid_ci_untrusted_policy_digest.json`).
+
+---
+
+## 7. Git Hash Agility: SHA-1 versus SHA-256
+
 Git repositories support two object hash algorithms: **SHA-1** (default) and **SHA-256** (Object Format 2). The verifier schema explicitly models both, binding algorithm to character length:
 
 | Declared Algorithm | Valid Identifier Length | Hexadecimal Regex Pattern |
@@ -156,50 +192,16 @@ Git repositories support two object hash algorithms: **SHA-1** (default) and **S
 | `sha1` | Exactly 40 characters | `^[0-9a-f]{40}$` |
 | `sha256` | Exactly 64 characters | `^[0-9a-f]{64}$` |
 
-### 6.2 Schema Enforcement
 The schema uses conditional sub-schemas (`allOf` with `if`/`then`) to enforce that:
 - When `source.git_hash_algorithm` is `"sha1"`, both `commit_sha` and optional `tree_hash` must match `^[0-9a-f]{40}$`.
 - When `source.git_hash_algorithm` is `"sha256"`, both `commit_sha` and optional `tree_hash` must match `^[0-9a-f]{64}$`.
-- Any mismatch (e.g. `sha1` with 64 hex characters or `sha256` with 40 hex characters) fails schema validation immediately.
-
-### 6.3 Separation from Artifact Digests
-- **Git Commit SHA:** Formed by hashing Git header `commit <size>\0` followed by commit tree, parents, author, and committer information.
-- **Artifact SHA-256:** Formed by hashing raw file bytes directly.
-- The verifier **never equates a 40-character Git SHA with a 64-character artifact hash**, nor assumes that a syntactically valid hash proves Git object existence or repository ownership.
+- Any mismatch fails schema validation immediately (fixtures: `input_invalid_git_sha1_with_sha256_length.json` and `input_invalid_git_sha256_with_sha1_length.json`).
 
 ---
 
-## 7. Artifact Digest Binding
+## 8. Artifact Digest Binding
 
 For all build outputs and downloadable archives in `artifact_evidence`:
 - When `digest_algorithm` is `"sha256"`, `digest_value` must be exactly 64 lowercase hexadecimal characters (`^[0-9a-f]{64}$`).
 - When `digest_algorithm` is `"sha512"`, `digest_value` must be exactly 128 lowercase hexadecimal characters (`^[0-9a-f]{128}$`).
-- Any attempt to declare `sha256` with a 128-char string or `sha512` with a 64-char string is rejected at schema level.
-
----
-
-## 8. Authoritative Test Vectors (RFC 8785 Section 3)
-
-The following test vectors from RFC 8785 Section 3 serve as the baseline for canonicalization verification in GOV-01:
-
-### Vector 1: Property Sorting (UTF-16 Code Units)
-- **Input JSON:**
-  ```json
-  {"\u20ac": "Euro", "b": 2, "a": 1, "\ud83d\ude00": "Grinning Face"}
-  ```
-- **Canonical JCS Output (UTF-8 bytes):**
-  ```json
-  {"a":1,"b":2,"\u20ac":"Euro","\ud83d\ude00":"Grinning Face"}
-  ```
-- **Rationale:** `a` (U+0061) < `b` (U+0062) < `\u20ac` (U+20AC) < `\ud83d\ude00` (High surrogate U+D83D).
-
-### Vector 2: Number Formatting and Zero
-- **Input JSON:**
-  ```json
-  {"zero": -0, "float": 1.000000, "exp": 1e+20, "small": 0.0000001}
-  ```
-- **Canonical JCS Output:**
-  ```json
-  {"exp":1e+20,"float":1,"small":1e-7,"zero":0}
-  ```
-- **Rationale:** `-0` converts to `0`; `1.000000` converts to `1`; `0.0000001` formats as `1e-7`.
+- Producer manifests cannot declare `observed_availability`; artifact availability is strictly an engine-observed dimension ($D_{\text{availability}}$).

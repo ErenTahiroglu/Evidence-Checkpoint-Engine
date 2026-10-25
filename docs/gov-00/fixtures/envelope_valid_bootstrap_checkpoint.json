@@ -1,0 +1,33 @@
+{
+  "envelope_version": "0.1.0-draft",
+  "payload": {
+    "schema_version": "0.1.0-draft",
+    "checkpoint_id": "ece-bootstrap-00-baseline",
+    "phase": "BOOTSTRAP-00",
+    "timestamp": "2026-10-25T03:37:58Z",
+    "repository": {
+      "owner": "ErenTahiroglu",
+      "name": "Evidence-Checkpoint-Engine",
+      "github_rest_id": "1432704795"
+    },
+    "source": {
+      "commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+      "git_hash_algorithm": "sha1",
+      "tree_hash": "5ed8836bff3ad2441f6adbc091ef026cd53f4af8",
+      "branch": "development"
+    },
+    "producer": {
+      "declared_by": "Eren Tahiroğlu",
+      "role": "developer"
+    },
+    "governance": {
+      "related_issues": [1, 2],
+      "decision_refs": ["ADR-001", "ADR-002", "ADR-003", "ADR-004"]
+    },
+    "integrity": {
+      "canonicalization_algorithm": "RFC8785",
+      "digest_algorithm": "sha256"
+    }
+  },
+  "envelope_manifest_digest": "sha256:157aaebc73d8daecfc07aa8e8b706fdcd1d4b5909d55442144a194734c20199d"
+}

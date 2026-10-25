@@ -91,14 +91,14 @@ Evidence-Checkpoint-Engine must eventually run independently across Windows, mac
 
 | Target Platform & Arch | Explicit Runner Label | Runner Architecture | Notes |
 |---|---|---|---|
-| **Windows 11 (`x86_64`)** | `windows-2025` (or `windows-latest`) | `x86_64` | Windows Server 2025 / Windows 11 host environment |
+| **Windows 11 (`x86_64`)** | `windows-2025` (or `windows-latest`) | `x86_64` | Runs on Windows Server 2025 CI; native Windows 11 client requires physical device validation |
 | **macOS Apple Silicon (`arm64`)** | `macos-26` / `macos-15` (or `macos-latest`) | `arm64` (Apple Silicon M1/M2/M3) | Native ARM64 execution; default for `macos-latest` |
 | **macOS Intel (`x86_64`)** | `macos-26-intel` / `macos-15-intel` | `x86_64` (Intel) | Dedicated Intel x86_64 runner for backwards compatibility |
 | **Linux (`x86_64`)** | `ubuntu-24.04` (or `ubuntu-latest`) | `x86_64` | Ubuntu 24.04 LTS runner |
 
-*Note on Windows ARM64:* Windows ARM64 is not currently available as a standard free GitHub-hosted runner. It is explicitly deferred to later milestones rather than silently claimed as supported.
+*Note on Windows ARM64:* Although GitHub Actions documentation now lists `windows-11-arm` runner options for public repositories, Windows ARM64 support is explicitly deferred to a post-MVP milestone by deliberate product decision, prioritizing Windows x64, macOS (Apple Silicon and Intel), and Linux x64 for initial verification.
 
-*Note on CI Scope:* **No CI workflow file may be created in GOV-00 R1.** These runner definitions establish the planned verification matrix for GOV-01.
+*Note on CI Scope:* **No CI workflow file may be created in GOV-00.** These runner definitions establish the planned verification matrix for GOV-01.
 
 ### 4.3 Evidence Hierarchy for Platform Support
 Pursuant to repository governance, no platform is classified as "verified" until native execution evidence is produced. The six verification levels are:
@@ -122,7 +122,7 @@ Pursuant to repository governance, no platform is classified as "verified" until
 ## 5. Entrance and Exit Criteria for GOV-01
 
 ### Entrance Criteria:
-1. `GOV-00 R1` remediation package independently reviewed and confirmed by Red Team.
+1. `GOV-00 R2` remediation package independently reviewed and confirmed by Red Team.
 2. The project owner (`Eren Tahiroglu`) formally authorizes `ADR-006` runtime selection in Issue #2.
 3. Issue #3 (`GOV-01`) is unblocked and transitioned to active development.
 

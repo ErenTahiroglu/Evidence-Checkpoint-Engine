@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
-  "title": "Evidence Checkpoint Assessment Output Contract (Draft R1)",
+  "title": "Evidence Checkpoint Assessment Output Contract (Draft R2)",
   "description": "Schema for deterministic verification assessments emitted by Evidence-Checkpoint-Engine. Separates machine-assessed facts from declared claims, independent reviews, and human authorization.",
   "type": "object",
   "additionalProperties": false,
@@ -77,7 +77,11 @@
         "evaluated_checkpoint_id"
       ],
       "properties": {
-        "repository_id": { "type": "string", "pattern": "^[1-9][0-9]{0,19}$" },
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$",
+          "description": "Canonical decimal string of repository ID. Bounded by uint64::MAX (18446744073709551615) during semantic validation."
+        },
         "repository_owner": { "type": "string" },
         "repository_name": { "type": "string" },
         "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
@@ -307,7 +311,119 @@
     "exit_code": {
       "type": "integer",
       "enum": [0, 1, 2, 3, 4],
-      "description": "0=Clean verification pass, 1=Limitations or warnings (ASSESSED_LIMITATIONS), 2=Verification failure (ASSESSED_FAIL), 3=Schema rejection/malformed (REFUSED), 4=Execution error."
+      "description": "0=Clean verification pass (ASSESSED_PROVISIONAL_PASS), 1=Limitations or warnings (ASSESSED_LIMITATIONS), 2=Verification failure (ASSESSED_FAIL), 3=Schema rejection/refusal/insufficient evidence (REFUSED/INSUFFICIENT_EVIDENCE), 4=Execution error."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "evaluator_auth": {
+            "properties": {
+              "execution_context": { "const": "SYNTHETIC_MOCK_UNTRUSTED" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evaluator_auth": {
+            "properties": {
+              "is_synthetic_mock": { "const": true }
+            }
+          },
+          "derived_summary": {
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "ASSESSED_LIMITATIONS",
+                  "ASSESSED_FAIL",
+                  "INSUFFICIENT_EVIDENCE",
+                  "REFUSED"
+                ]
+              }
+            }
+          },
+          "claims_breakdown": {
+            "properties": {
+              "human_authorized": {
+                "properties": {
+                  "authorized": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator_auth": {
+            "properties": {
+              "is_synthetic_mock": { "const": true }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "derived_summary": {
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "ASSESSED_LIMITATIONS",
+                  "ASSESSED_FAIL",
+                  "INSUFFICIENT_EVIDENCE",
+                  "REFUSED"
+                ]
+              }
+            }
+          },
+          "claims_breakdown": {
+            "properties": {
+              "human_authorized": {
+                "properties": {
+                  "authorized": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "claims_breakdown": {
+            "properties": {
+              "human_authorized": {
+                "properties": {
+                  "authorized": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evaluator_auth": {
+            "properties": {
+              "is_synthetic_mock": { "const": false }
+            }
+          },
+          "dimensions": {
+            "properties": {
+              "authorization": {
+                "properties": {
+                  "status": { "const": "EXPLICITLY_AUTHORIZED" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

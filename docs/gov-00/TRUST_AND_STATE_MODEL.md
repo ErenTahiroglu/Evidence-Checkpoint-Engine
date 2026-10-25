@@ -1,7 +1,7 @@
 # Trust Architecture and Multi-Dimensional State Model
 
-> **Milestone:** `GOV-00 R1`
-> **Status:** `PROPOSED ARCHITECTURE / REMEDIATED DRAFT FOR REVIEW`
+> **Milestone:** `GOV-00 R2`
+> **Status:** `PROPOSED ARCHITECTURE / REMEDIATED CONTRACT DRAFT`
 > **Applicability:** Standalone Verification Core and Downstream Consumers
 
 ---
@@ -108,8 +108,12 @@ Evaluates whether supporting evidence (artifacts, test logs, source trees) remai
   - `EXPIRED`: GitHub artifact retention window (e.g., 90 days) has elapsed and artifact is deleted from live storage.
   - `UNREACHABLE`: Network failure, rate-limiting, or permission denial prevents fetching live evidence.
   - `NOT_PROVIDED`: Manifest does not reference external artifacts.
-- **Distinction Between Expiration and Corruption:** An expired artifact is an expected operational lifecycle event, not evidence corruption. If an original GitHub artifact has expired but an independently verified offsite archive exists, the availability status is `AVAILABLE` (with `is_archive: true`).
-- **No Untrusted Expiration Declarations:** An artifact is never classified as `EXPIRED` based solely on a developer's declared retention duration; expiration requires authoritative observation (e.g., HTTP 404/410 from GitHub API or missing archive object).
+- **Distinction Between Expiration, Inaccessibility, and Corruption:**
+  - An expired artifact is an expected operational lifecycle event, not evidence corruption.
+  - A generic HTTP 404 or connection error is **not** automatically definitive proof of expiration (it could indicate network outage, permission denial, or rate-limiting, resolving to `UNREACHABLE`).
+  - True `EXPIRED` status requires authoritative confirmation that the retention duration elapsed and the storage provider purged the object.
+  - If the original artifact expired but an independently verified offsite archive exists, the availability status is `AVAILABLE` (with `is_archive: true`).
+- **No Untrusted Expiration Declarations:** Producer input manifests cannot declare `observed_availability`. Expiration is strictly an engine-observed status ($D_{\text{availability}} = \text{EXPIRED}$) based on authoritative storage provider interaction.
 
 ---
 

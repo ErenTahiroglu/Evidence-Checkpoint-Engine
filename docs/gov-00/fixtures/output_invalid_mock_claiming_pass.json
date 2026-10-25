@@ -1,0 +1,83 @@
+{
+  "schema_version": "0.1.0-draft",
+  "assessment_id": "eval-20261025-synthetic-illegal-pass",
+  "evaluator_auth": {
+    "execution_context": "SYNTHETIC_MOCK_UNTRUSTED",
+    "is_synthetic_mock": true,
+    "signature_reference": "UNAUTHENTICATED_SYNTHETIC_FIXTURE"
+  },
+  "engine": {
+    "name": "Evidence-Checkpoint-Engine",
+    "version": "0.1.0-draft",
+    "canonicalization_standard": "RFC8785",
+    "build_commit": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02"
+  },
+  "evaluation_timestamp": "2026-10-25T03:40:00Z",
+  "evaluated_target": {
+    "repository_id": "1432704795",
+    "repository_owner": "ErenTahiroglu",
+    "repository_name": "Evidence-Checkpoint-Engine",
+    "target_commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "evaluated_checkpoint_id": "ece-bootstrap-00-baseline"
+  },
+  "dimensions": {
+    "evidence_integrity": {
+      "status": "VALID",
+      "digest_match": true,
+      "details": "Mock claiming valid digest."
+    },
+    "ci_execution": {
+      "status": "NOT_APPLICABLE",
+      "expected_jobs_count": 0,
+      "observed_jobs_count": 0,
+      "unresolved_jobs": []
+    },
+    "evidence_availability": {
+      "status": "AVAILABLE",
+      "expired_references": []
+    },
+    "review_status": {
+      "status": "INDEPENDENT_REVIEW_PASS",
+      "tier": "INDEPENDENT_FULL",
+      "scope": "Mock claiming independent pass.",
+      "reviewer_identity": "Fake Auditor"
+    },
+    "authorization": {
+      "status": "EXPLICITLY_AUTHORIZED",
+      "decision_by": "Eren Tahiroğlu",
+      "authorization_scope": "Full promotion."
+    },
+    "freshness": {
+      "status": "CURRENT_HEAD",
+      "live_head_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02"
+    }
+  },
+  "derived_summary": {
+    "verdict": "ASSESSED_PROVISIONAL_PASS",
+    "blocking_reasons": [],
+    "warnings": []
+  },
+  "claims_breakdown": {
+    "source_declared": {
+      "claimed_phase": "BOOTSTRAP-00",
+      "claimed_producer": "Attacker"
+    },
+    "machine_assessed": {
+      "sha_verified": true,
+      "repo_id_matched": true,
+      "schema_conformant": true,
+      "digest_verified": true
+    },
+    "independently_reviewed": {
+      "review_verdict": "BOOTSTRAP_00_STATIC_REVIEW_PASS"
+    },
+    "human_authorized": {
+      "authorized": false
+    }
+  },
+  "checks_performed": [
+    "Fabricated pass check"
+  ],
+  "checks_omitted": [],
+  "exit_code": 0
+}
