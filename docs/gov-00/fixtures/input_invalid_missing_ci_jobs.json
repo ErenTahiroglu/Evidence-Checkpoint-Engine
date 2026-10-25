@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1.0-draft",
+  "checkpoint_id": "ece-neg-fixture-missing-ci-jobs",
+  "phase": "BOOTSTRAP-00",
+  "timestamp": "2026-10-25T03:37:58Z",
+  "repository": {
+    "owner": "ErenTahiroglu",
+    "name": "Evidence-Checkpoint-Engine",
+    "github_rest_id": "1432704795"
+  },
+  "source": {
+    "commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "git_hash_algorithm": "sha1",
+    "branch": "development"
+  },
+  "producer": {
+    "declared_by": "Developer",
+    "role": "developer"
+  },
+  "ci_evidence": {
+    "workflow_path": ".github/workflows/ci.yml",
+    "run_id": "40144852713",
+    "run_attempt": 1,
+    "event": "push",
+    "head_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "actual_checkout_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "expected_jobs": ["test", "lint", "security-audit"],
+    "observed_jobs": [
+      { "name": "test", "status": "completed", "conclusion": "success" }
+    ]
+  },
+  "integrity": {
+    "canonicalization_algorithm": "RFC8785",
+    "digest_algorithm": "sha256"
+  }
+}

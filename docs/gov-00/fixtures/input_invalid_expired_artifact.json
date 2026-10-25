@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1.0-draft",
+  "checkpoint_id": "ece-neg-fixture-expired-artifact",
+  "phase": "BOOTSTRAP-00",
+  "timestamp": "2026-10-25T03:37:58Z",
+  "repository": {
+    "owner": "ErenTahiroglu",
+    "name": "Evidence-Checkpoint-Engine",
+    "github_rest_id": "1432704795"
+  },
+  "source": {
+    "commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "git_hash_algorithm": "sha1",
+    "branch": "development"
+  },
+  "producer": {
+    "declared_by": "Developer",
+    "role": "developer"
+  },
+  "artifact_evidence": [
+    {
+      "artifact_name": "build-output-expired",
+      "artifact_id": "12345678",
+      "run_id": "40144852713",
+      "digest_algorithm": "sha256",
+      "digest_value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 1024,
+      "retention_days": 1,
+      "is_archive": true
+    }
+  ],
+  "integrity": {
+    "canonicalization_algorithm": "RFC8785",
+    "digest_algorithm": "sha256"
+  }
+}

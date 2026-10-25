@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
+  "title": "Evidence Checkpoint Assessment Output Contract (Draft)",
+  "description": "Schema for deterministic verification assessments emitted by Evidence-Checkpoint-Engine. Separates machine-assessed facts from declared claims, independent reviews, and human authorization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "assessment_id",
+    "engine",
+    "evaluation_timestamp",
+    "evaluated_target",
+    "dimensions",
+    "derived_summary",
+    "claims_breakdown",
+    "checks_performed",
+    "exit_code"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1.0-draft"]
+    },
+    "assessment_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_\\-\\.:]{1,64}$"
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "canonicalization_standard"],
+      "properties": {
+        "name": { "type": "string", "enum": ["Evidence-Checkpoint-Engine"] },
+        "version": { "type": "string" },
+        "canonicalization_standard": { "type": "string", "enum": ["RFC8785"] },
+        "build_commit": { "type": "string" }
+      }
+    },
+    "evaluation_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluated_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_id",
+        "repository_owner",
+        "repository_name",
+        "target_commit_sha",
+        "evaluated_checkpoint_id"
+      ],
+      "properties": {
+        "repository_id": { "type": "string", "pattern": "^[0-9]{1,20}$" },
+        "repository_owner": { "type": "string" },
+        "repository_name": { "type": "string" },
+        "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "evaluated_checkpoint_id": { "type": "string" }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_integrity",
+        "ci_execution",
+        "evidence_availability",
+        "review_status",
+        "authorization",
+        "freshness"
+      ],
+      "properties": {
+        "evidence_integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "digest_match", "details"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["VALID", "INVALID", "CORRUPT", "TAMPERED", "NOT_EVALUATED"]
+            },
+            "digest_match": { "type": "boolean" },
+            "details": { "type": "string" }
+          }
+        },
+        "ci_execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "expected_jobs_count",
+            "observed_jobs_count",
+            "unresolved_jobs"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "VERIFIED_PASS",
+                "FAILED",
+                "INCOMPLETE_SKIPPED",
+                "ATTEMPT_MISMATCH",
+                "UNVERIFIED_RUN",
+                "NOT_APPLICABLE"
+              ]
+            },
+            "expected_jobs_count": { "type": "integer", "minimum": 0 },
+            "observed_jobs_count": { "type": "integer", "minimum": 0 },
+            "unresolved_jobs": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "evidence_availability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "expired_references"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "AVAILABLE",
+                "PARTIALLY_AVAILABLE",
+                "EXPIRED",
+                "UNREACHABLE",
+                "NOT_PROVIDED"
+              ]
+            },
+            "expired_references": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "review_status": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "tier", "scope"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "INDEPENDENT_REVIEW_PASS",
+                "STATIC_PASS_WITH_LIMITATIONS",
+                "SELF_REPORT_ONLY",
+                "REVIEW_FAILED",
+                "UNREVIEWED"
+              ]
+            },
+            "tier": {
+              "type": "string",
+              "enum": ["NONE", "SELF_CLAIM", "STATIC_AUDIT", "INDEPENDENT_FULL"]
+            },
+            "scope": { "type": "string" },
+            "reviewer_identity": { "type": "string" }
+          }
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "decision_by"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "EXPLICITLY_AUTHORIZED",
+                "AUTHORIZATION_PENDING",
+                "REJECTED",
+                "REVOKED"
+              ]
+            },
+            "decision_by": { "type": ["string", "null"] },
+            "authorization_scope": { "type": "string" }
+          }
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "live_head_sha"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "CURRENT_HEAD",
+                "HISTORICAL_BASELINE",
+                "STALE_DIVERGED",
+                "UNKNOWN_HEAD"
+              ]
+            },
+            "live_head_sha": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "derived_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "blocking_reasons", "warnings"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "ASSESSED_PROVISIONAL_PASS",
+            "ASSESSED_LIMITATIONS",
+            "ASSESSED_FAIL",
+            "INSUFFICIENT_EVIDENCE",
+            "REFUSED"
+          ]
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "claims_breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_declared",
+        "machine_assessed",
+        "independently_reviewed",
+        "human_authorized"
+      ],
+      "properties": {
+        "source_declared": { "type": "object" },
+        "machine_assessed": { "type": "object" },
+        "independently_reviewed": { "type": "object" },
+        "human_authorized": { "type": "object" }
+      }
+    },
+    "checks_performed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "checks_omitted": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    }
+  }
+}

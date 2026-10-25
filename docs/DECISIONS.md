@@ -6,16 +6,16 @@
 | ADR-002 | Repository Visibility | **RESOLVED: PUBLIC** | Repository is publicly readable on GitHub to enable transparent verification and reference across public projects. |
 | ADR-003 | Licensing | **RESOLVED: PolyForm Noncommercial 1.0.0** | Adopted official PolyForm Noncommercial License 1.0.0. Required Notice: `Copyright (c) 2026 Eren Tahiroğlu`. Commercial use is restricted unless separately authorized. |
 | ADR-004 | Branch Governance | **RESOLVED: `main` and `development`** | Exactly two long-lived branches. `main` is the authorized baseline; `development` is the working branch. Initial bootstrap commit on `main` is a baseline placeholder, not a validated release. |
-| ADR-005 | Verifier Architecture | **PROPOSED (GOV-00)** | Standalone verification core + CLI with optional read-only GitHub adapter. No database, daemon, or GUI verifier in MVP. |
-| ADR-006 | Runtime Language | **OPEN (Pending GOV-00)** | Comparative evaluation between Rust (memory safety, native packaging), Go (standard library, toolchain simplicity), and Python (rapid fixture testing). Decision gated on GOV-00. |
-| ADR-007 | Target Platforms | **OPEN (Pending GOV-00)** | Cross-platform compatibility goals (Linux, macOS, Windows) to be tested and bounded on CI before claiming support. |
-| ADR-008 | Data Serialization | **OPEN (Pending GOV-00)** | Evaluation of RFC 8785 JSON Canonicalization Scheme (JCS) for deterministic hashing and cross-platform verification. |
-| ADR-009 | Multi-Dimensional Trust | **PROPOSED (GOV-00)** | Discard single 1D PASS/FAIL model in favor of six explicit dimensions: Evidence Integrity, CI Execution, Evidence Availability, Review Status, Authorization, and Freshness. |
-| ADR-010 | External Consumer Contract | **PROPOSED (GOV-06)** | Read-only static output contract for external consumers such as AI-Toolchain-Manager (#33, #34). External tools cannot mint or upgrade verifier trust. |
+| ADR-005 | Verifier Architecture | **PROPOSED (GOV-00)** | Modular monolith core + CLI with optional read-only GitHub adapter. Detailed in [docs/gov-00/GOV_00_ARCHITECTURE_REPORT.md](gov-00/GOV_00_ARCHITECTURE_REPORT.md). |
+| ADR-006 | Runtime Language | **PROPOSED: Rust (Provisional Recommendation)** | Weighted evaluation favors Rust (4.75/5.00) over Go (4.15/5.00), Python (2.60), and TypeScript (2.65). See [docs/gov-00/ADR_RUNTIME_AND_COMPONENTS.md](gov-00/ADR_RUNTIME_AND_COMPONENTS.md). Awaiting owner approval. |
+| ADR-007 | Target Platforms | **PROPOSED: Linux, macOS, Windows** | Cross-platform standalone binary distribution targets detailed in [docs/gov-00/MVP_AND_INTEGRATION_GATES.md](gov-00/MVP_AND_INTEGRATION_GATES.md). |
+| ADR-008 | Data Serialization | **PROPOSED: RFC 8785 (JCS)** | Strict UTF-16 key sorting, ECMAScript float formatting, and decimal strings for 64-bit IDs. See [docs/gov-00/CONTRACT_AND_CANONICALIZATION.md](gov-00/CONTRACT_AND_CANONICALIZATION.md). |
+| ADR-009 | Multi-Dimensional Trust | **PROPOSED: 6-Dimensional Model** | Six orthogonal dimensions (Integrity, CI Execution, Availability, Review, Authorization, Freshness). See [docs/gov-00/TRUST_AND_STATE_MODEL.md](gov-00/TRUST_AND_STATE_MODEL.md). |
+| ADR-010 | External Consumer Contract | **PROPOSED: Read-Only Pipe Contract** | Downstream consumers (AI-Toolchain-Manager #33, #34) consume verifier stdout JSON strictly read-only. See [docs/gov-00/MVP_AND_INTEGRATION_GATES.md](gov-00/MVP_AND_INTEGRATION_GATES.md). |
 | ADR-011 | Contributor Policy | **DEFERRED (Post-Bootstrap)** | No CLA, DCO, or automated contributor acceptance introduced during bootstrap. Future contributions require explicit IP and redistribution review. |
 
 ---
 
-## Next Architectural Milestone
+## Architectural Governance Milestone
 
-The next actionable milestone is **GOV-00: Architecture, requirements, technology comparison, and threat model**, which will formally resolve ADR-006, ADR-007, and ADR-008. No functional verification code is authorized before GOV-00 acceptance.
+Milestone **GOV-00: Architecture, requirements, technology comparison, and threat model** has delivered complete architectural specifications under [docs/gov-00/](gov-00/). All proposed decisions remain pending independent Red Team review and formal owner authorization before GOV-01 implementation.

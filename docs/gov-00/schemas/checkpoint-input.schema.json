@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/checkpoint-input.schema.json",
+  "title": "Evidence Checkpoint Input Contract (Draft)",
+  "description": "Schema for declared evidence checkpoint inputs submitted to Evidence-Checkpoint-Engine. All contents are treated as unverified producer claims (SOURCE_DECLARED) until programmatically assessed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "checkpoint_id",
+    "phase",
+    "timestamp",
+    "repository",
+    "source",
+    "producer"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1.0-draft"]
+    },
+    "checkpoint_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_\\-\\.:]{1,64}$",
+      "description": "Unique identifier for this checkpoint proposal."
+    },
+    "phase": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_\\-]{1,32}$",
+      "description": "Governance or milestone gate identifier (e.g., GOV-00, BOOTSTRAP-00)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC timestamp when this checkpoint was assembled."
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "name", "github_rest_id"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]{1,39}$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-\\.]{1,100}$"
+        },
+        "github_rest_id": {
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$",
+          "description": "Canonical decimal string of the immutable GitHub REST repository ID (e.g. '1432704795') to prevent floating-point precision loss."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_sha", "git_hash_algorithm", "branch"],
+      "properties": {
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full 40-character hexadecimal Git commit SHA."
+        },
+        "git_hash_algorithm": {
+          "type": "string",
+          "enum": ["sha1", "sha256"],
+          "default": "sha1",
+          "description": "Git object hash algorithm used by the repository."
+        },
+        "tree_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Optional full 40-character Git tree hash."
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-\\./]{1,128}$",
+          "description": "Target branch associated with this commit proposal."
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declared_by", "role"],
+      "properties": {
+        "declared_by": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "enum": ["developer", "agent", "automated_bot"]
+        },
+        "agent_id": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "ci_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_path",
+        "run_id",
+        "run_attempt",
+        "expected_jobs",
+        "observed_jobs"
+      ],
+      "properties": {
+        "workflow_path": {
+          "type": "string",
+          "pattern": "^\\.github/workflows/[a-zA-Z0-9_\\-\\.]+\\.(yml|yaml)$"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9]{1,20}$",
+          "description": "Canonical decimal string representation of GitHub workflow run ID."
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "event": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "head_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "actual_checkout_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "expected_jobs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "observed_jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "status", "conclusion"],
+            "properties": {
+              "name": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["completed", "in_progress", "queued"]
+              },
+              "conclusion": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "failure",
+                  "cancelled",
+                  "skipped",
+                  "timed_out",
+                  "action_required",
+                  "neutral"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifact_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifact_name",
+          "artifact_id",
+          "run_id",
+          "digest_algorithm",
+          "digest_value",
+          "size_bytes"
+        ],
+        "properties": {
+          "artifact_name": { "type": "string" },
+          "artifact_id": { "type": "string", "pattern": "^[0-9]{1,20}$" },
+          "run_id": { "type": "string", "pattern": "^[0-9]{1,20}$" },
+          "digest_algorithm": { "type": "string", "enum": ["sha256", "sha512"] },
+          "digest_value": { "type": "string", "pattern": "^[0-9a-f]{64,128}$" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "retention_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+          "is_archive": { "type": "boolean" }
+        }
+      }
+    },
+    "review_declarations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewer_id", "review_type", "scope", "target_commit_sha"],
+        "properties": {
+          "reviewer_id": { "type": "string" },
+          "review_type": {
+            "type": "string",
+            "enum": [
+              "human_independent",
+              "ai_agent_self_report",
+              "automated_static"
+            ]
+          },
+          "scope": { "type": "string" },
+          "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "findings_summary": { "type": "string" }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "related_issues": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "related_prs": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "decision_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonicalization_algorithm", "digest_algorithm"],
+      "properties": {
+        "canonicalization_algorithm": {
+          "type": "string",
+          "enum": ["RFC8785"]
+        },
+        "digest_algorithm": {
+          "type": "string",
+          "enum": ["sha256"]
+        },
+        "envelope_manifest_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Optional content digest calculated over the canonicalized manifest excluding this integrity envelope."
+        }
+      }
+    }
+  }
+}

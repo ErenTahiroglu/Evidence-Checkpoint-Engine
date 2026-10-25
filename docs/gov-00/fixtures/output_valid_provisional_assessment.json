@@ -1,0 +1,86 @@
+{
+  "schema_version": "0.1.0-draft",
+  "assessment_id": "eval-20261025-001",
+  "engine": {
+    "name": "Evidence-Checkpoint-Engine",
+    "version": "0.1.0-draft",
+    "canonicalization_standard": "RFC8785",
+    "build_commit": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02"
+  },
+  "evaluation_timestamp": "2026-10-25T03:40:00Z",
+  "evaluated_target": {
+    "repository_id": "1432704795",
+    "repository_owner": "ErenTahiroglu",
+    "repository_name": "Evidence-Checkpoint-Engine",
+    "target_commit_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02",
+    "evaluated_checkpoint_id": "ece-bootstrap-00-baseline"
+  },
+  "dimensions": {
+    "evidence_integrity": {
+      "status": "VALID",
+      "digest_match": true,
+      "details": "Manifest canonicalized via RFC 8785 and verified."
+    },
+    "ci_execution": {
+      "status": "NOT_APPLICABLE",
+      "expected_jobs_count": 0,
+      "observed_jobs_count": 0,
+      "unresolved_jobs": []
+    },
+    "evidence_availability": {
+      "status": "AVAILABLE",
+      "expired_references": []
+    },
+    "review_status": {
+      "status": "STATIC_PASS_WITH_LIMITATIONS",
+      "tier": "STATIC_AUDIT",
+      "scope": "Bootstrap static documentation and licensing audit.",
+      "reviewer_identity": "Independent Auditor"
+    },
+    "authorization": {
+      "status": "AUTHORIZATION_PENDING",
+      "decision_by": null,
+      "authorization_scope": "Pending formal owner promotion decision."
+    },
+    "freshness": {
+      "status": "CURRENT_HEAD",
+      "live_head_sha": "bead6837e1ec03c8fe1ac3c8d09fd374fb8b0e02"
+    }
+  },
+  "derived_summary": {
+    "verdict": "ASSESSED_LIMITATIONS",
+    "blocking_reasons": [],
+    "warnings": [
+      "Repository is at bootstrap baseline; no functional CI execution was evaluated.",
+      "Human owner authorization is pending."
+    ]
+  },
+  "claims_breakdown": {
+    "source_declared": {
+      "claimed_phase": "BOOTSTRAP-00",
+      "claimed_producer": "Eren Tahiroğlu"
+    },
+    "machine_assessed": {
+      "sha_verified": true,
+      "repo_id_matched": true,
+      "schema_conformant": true
+    },
+    "independently_reviewed": {
+      "review_verdict": "BOOTSTRAP_00_STATIC_REVIEW_PASS_WITH_LIMITATIONS"
+    },
+    "human_authorized": {
+      "authorized": false
+    }
+  },
+  "checks_performed": [
+    "JSON Schema Draft 2020-12 structural validation",
+    "Immutable repository ID matching",
+    "Exact commit SHA format and presence verification",
+    "RFC 8785 canonical hash computation"
+  ],
+  "checks_omitted": [
+    "CI run log parsing (no workflow executed)",
+    "Artifact byte download (no binary artifacts published)"
+  ],
+  "exit_code": 0
+}
