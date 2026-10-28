@@ -15,11 +15,7 @@ use std::path::{Path, PathBuf};
     about = "Evidence Checkpoint Engine — offline verifier CLI"
 )]
 struct Cli {
-    #[arg(
-        long,
-        env = "ECE_SCHEMA_DIR",
-        help = "Path to directory containing draft schemas"
-    )]
+    #[arg(long, help = "Path to directory containing draft schemas")]
     schema_dir: Option<PathBuf>,
 
     #[command(subcommand)]
@@ -44,6 +40,10 @@ enum Commands {
 fn resolve_schema_dir(explicit: Option<PathBuf>) -> PathBuf {
     if let Some(dir) = explicit {
         return dir;
+    }
+
+    if let Ok(env_dir) = std::env::var("ECE_SCHEMA_DIR") {
+        return PathBuf::from(env_dir);
     }
 
     // Try standard candidate paths
