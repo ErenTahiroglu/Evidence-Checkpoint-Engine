@@ -102,27 +102,11 @@ fn write_number(n: &serde_json::Number, buf: &mut Vec<u8>) -> Result<(), Verifie
 /// - No '+' in exponent, lowercase 'e'
 /// - No trailing zeros in mantissa
 fn format_ecma_float(f: f64) -> String {
-    // Rust's Display for f64 already gives shortest round-trip.
-    // We need to ensure the exponent uses lowercase 'e' and no '+'.
-    let s = format!("{f:e}");
-    // s looks like "1.5e7" or "1.5e-3" — Rust already uses lowercase 'e' and no '+' for positive exponent
-    // But check: format!("{:e}", 1.5e7) == "1.5e7"? Let's use ryu-style shortest.
-    // Actually the safest path: use serde_json's own serializer for f64, which follows ECMAScript rules.
-    // We can serialize a temporary Value::Number and extract the raw text.
-    // Even simpler: directly use format!("{}", f) which gives shortest round-trip in Rust.
-    let plain = format!("{f}");
-    // Check if the plain form round-trips
-    if plain.parse::<f64>().ok() == Some(f) {
-        // Ensure no uppercase E (Rust uses 'e' in format!("{:e}") but not in "{}").
-        // format!("{}") on f64 in Rust never uses scientific notation for small-ish values,
-        // but for very large/small may. Use the serde_json serialization which is ECMAScript-correct.
-        // The safest approach: serialize via serde_json which uses ryu internally.
-        let v = serde_json::Value::from(f);
-        if let Some(s) = serde_json::to_string(&v).ok() {
-            return s;
-        }
+    let v = serde_json::Value::from(f);
+    if let Ok(s) = serde_json::to_string(&v) {
+        return s;
     }
-    plain
+    format!("{f}")
 }
 
 /// Write a JSON string with RFC 8785 escaping rules.

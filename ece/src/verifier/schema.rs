@@ -163,7 +163,6 @@ pub fn default_schema_dir() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     fn test_schema_dir() -> std::path::PathBuf {
         std::path::PathBuf::from(concat!(

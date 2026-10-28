@@ -322,11 +322,7 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let exit_code = error.exit_code();
-    let verdict = if exit_code == 4 {
-        "REFUSED"
-    } else {
-        "REFUSED"
-    };
+    let verdict = "REFUSED";
 
     let assessment = json!({
         "schema_version": "0.1.0-draft",
@@ -633,7 +629,7 @@ pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref())
 }
 
-fn extract_str<'a>(value: &'a Value, pointer: &str) -> String {
+fn extract_str(value: &Value, pointer: &str) -> String {
     value
         .pointer(pointer)
         .and_then(|v| v.as_str())

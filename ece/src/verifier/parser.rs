@@ -47,7 +47,7 @@ pub fn parse_bounded_json(input: &[u8]) -> Result<Value, VerifierError> {
 fn parse_checking_duplicates(text: &str) -> Result<Value, VerifierError> {
     // We use serde_json's raw streaming deserializer to detect duplicates.
     // Strategy: deserialize into a custom structure that errors on dup keys.
-    use serde::de::{Deserialize, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+    use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
     use serde_json::de::StrRead;
     use std::fmt;
 
@@ -218,7 +218,7 @@ mod tests {
         for _ in 0..34 {
             json.push('[');
         }
-        json.push_str("1");
+        json.push('1');
         for _ in 0..34 {
             json.push(']');
         }
@@ -243,7 +243,7 @@ mod tests {
         for _ in 0..32 {
             json.push('[');
         }
-        json.push_str("1");
+        json.push('1');
         for _ in 0..32 {
             json.push(']');
         }
