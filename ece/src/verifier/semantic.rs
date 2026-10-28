@@ -16,6 +16,7 @@ use std::collections::HashSet;
 
 /// Result of semantic checks: a list of non-fatal warning strings.
 /// Fatal violations return Err(VerifierError::SemanticError).
+#[derive(Debug, Clone)]
 pub struct SemanticResult {
     pub warnings: Vec<String>,
     pub unresolved_jobs: Vec<String>,

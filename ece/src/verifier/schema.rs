@@ -9,7 +9,7 @@
 use crate::verifier::error::VerifierError;
 use jsonschema::{Draft, Retrieve, Uri, Validator};
 use serde_json::Value;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path};
 
 /// Holds compiled validators for the three schema types.
 pub struct SchemaStore {
@@ -20,6 +20,7 @@ pub struct SchemaStore {
 
 /// A local-only schema retriever that serves schemas from an in-memory map.
 /// Prevents any network access during $ref resolution.
+#[derive(Clone)]
 struct LocalRetriever {
     schemas: HashMap<String, Value>,
 }
@@ -27,7 +28,7 @@ struct LocalRetriever {
 impl Retrieve for LocalRetriever {
     fn retrieve(
         &self,
-        uri: &Uri<&str>,
+        uri: &Uri<String>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let uri_str = uri.as_str();
         self.schemas
@@ -84,29 +85,20 @@ impl SchemaStore {
         schema_map.insert("checkpoint-envelope.schema.json".to_owned(), envelope_schema.clone());
         schema_map.insert("assessment-output.schema.json".to_owned(), assessment_schema.clone());
 
-        let retriever = Arc::new(LocalRetriever {
-            schemas: schema_map.clone(),
-        });
+        let retriever = LocalRetriever {
+            schemas: schema_map,
+        };
 
-        let payload_validator = build_validator(
-            &input_schema,
-            Arc::new(LocalRetriever { schemas: schema_map.clone() }),
-        )
-        .map_err(|e| VerifierError::SchemaIo(format!("cannot compile payload schema: {e}")))?;
+        let payload_validator = build_validator(&input_schema, retriever.clone())
+            .map_err(|e| VerifierError::SchemaIo(format!("cannot compile payload schema: {e}")))?;
 
-        let envelope_validator = build_validator(
-            &envelope_schema,
-            Arc::new(LocalRetriever { schemas: schema_map.clone() }),
-        )
-        .map_err(|e| VerifierError::SchemaIo(format!("cannot compile envelope schema: {e}")))?;
+        let envelope_validator = build_validator(&envelope_schema, retriever.clone())
+            .map_err(|e| VerifierError::SchemaIo(format!("cannot compile envelope schema: {e}")))?;
 
-        let assessment_validator = build_validator(
-            &assessment_schema,
-            Arc::new(LocalRetriever { schemas: schema_map }),
-        )
-        .map_err(|e| {
-            VerifierError::SchemaIo(format!("cannot compile assessment schema: {e}"))
-        })?;
+        let assessment_validator = build_validator(&assessment_schema, retriever)
+            .map_err(|e| {
+                VerifierError::SchemaIo(format!("cannot compile assessment schema: {e}"))
+            })?;
 
         Ok(SchemaStore {
             envelope_validator,
@@ -133,7 +125,7 @@ impl SchemaStore {
 
 fn build_validator(
     schema: &Value,
-    retriever: Arc<LocalRetriever>,
+    retriever: LocalRetriever,
 ) -> Result<Validator, Box<dyn std::error::Error>> {
     let validator = jsonschema::options()
         .with_draft(Draft::Draft202012)
