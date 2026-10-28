@@ -1,8 +1,7 @@
 // integration_negative.rs — Negative integration tests for Evidence Checkpoint Engine.
 
 use ece_lib::verifier::{
-    parse_bounded_json, verify_envelope, ErrorCode, SchemaStore, VerifierError,
-    MAX_INPUT_BYTES,
+    parse_bounded_json, verify_envelope, ErrorCode, SchemaStore, VerifierError, MAX_INPUT_BYTES,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -23,7 +22,8 @@ fn fixture_dir() -> PathBuf {
 
 fn load_fixture(filename: &str) -> Vec<u8> {
     let path = fixture_dir().join(filename);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
+    std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
 }
 
 #[test]

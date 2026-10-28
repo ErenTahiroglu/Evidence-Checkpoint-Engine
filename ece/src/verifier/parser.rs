@@ -250,6 +250,5 @@ mod tests {
         assert!(parse_bounded_json(json.as_bytes()).is_ok());
     }
 }
-}
 
 

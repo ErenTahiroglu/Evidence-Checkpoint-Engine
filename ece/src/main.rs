@@ -30,19 +30,13 @@ struct Cli {
 enum Commands {
     #[command(about = "Verify a canonical evidence checkpoint envelope")]
     VerifyEnvelope {
-        #[arg(
-            long,
-            help = "Path to envelope JSON file or '-' to read from stdin"
-        )]
+        #[arg(long, help = "Path to envelope JSON file or '-' to read from stdin")]
         input: String,
     },
 
     #[command(about = "Inspect an untrusted inner checkpoint input payload (diagnostic only)")]
     InspectUntrustedPayload {
-        #[arg(
-            long,
-            help = "Path to payload JSON file or '-' to read from stdin"
-        )]
+        #[arg(long, help = "Path to payload JSON file or '-' to read from stdin")]
         input: String,
     },
 }
@@ -160,7 +154,11 @@ fn main() {
 
     eprintln!(
         "ECE: mode={} verdict={} exit_code={}",
-        if is_verify { "verify-envelope" } else { "inspect-untrusted-payload" },
+        if is_verify {
+            "verify-envelope"
+        } else {
+            "inspect-untrusted-payload"
+        },
         verdict,
         output.exit_code
     );

@@ -22,7 +22,8 @@ fn fixture_dir() -> PathBuf {
 
 fn load_fixture(filename: &str) -> Vec<u8> {
     let path = fixture_dir().join(filename);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
+    std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()))
 }
 
 #[test]
@@ -40,7 +41,10 @@ fn test_valid_bootstrap_envelope_content_consistency() {
 
     assert_eq!(output.exit_code, 1);
     assert_eq!(
-        output.assessment.pointer("/derived_summary/verdict").unwrap(),
+        output
+            .assessment
+            .pointer("/derived_summary/verdict")
+            .unwrap(),
         "ASSESSED_LIMITATIONS"
     );
     assert_eq!(
@@ -192,7 +196,10 @@ fn test_inspect_untrusted_payload_diagnostics_only() {
 
     assert_eq!(output.exit_code, 3);
     assert_eq!(
-        output.assessment.pointer("/derived_summary/verdict").unwrap(),
+        output
+            .assessment
+            .pointer("/derived_summary/verdict")
+            .unwrap(),
         "REFUSED"
     );
     assert_eq!(
@@ -212,7 +219,9 @@ fn test_valid_synthetic_assessment_handled_as_synthetic() {
 
     assert!(store.validate_assessment(&assessment).is_ok());
     assert_eq!(
-        assessment.pointer("/evaluator_auth/is_synthetic_mock").unwrap(),
+        assessment
+            .pointer("/evaluator_auth/is_synthetic_mock")
+            .unwrap(),
         true
     );
     assert_eq!(
@@ -222,7 +231,9 @@ fn test_valid_synthetic_assessment_handled_as_synthetic() {
         "SYNTHETIC_MOCK_UNTRUSTED"
     );
     assert_eq!(
-        assessment.pointer("/claims_breakdown/human_authorized/authorized").unwrap(),
+        assessment
+            .pointer("/claims_breakdown/human_authorized/authorized")
+            .unwrap(),
         false
     );
 }

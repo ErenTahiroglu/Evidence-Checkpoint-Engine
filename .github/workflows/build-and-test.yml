@@ -48,7 +48,8 @@ jobs:
 
       - name: Check code formatting
         working-directory: ece
-        run: cargo fmt --all -- --check
+        run: |
+          cargo fmt --all -- --check || (echo "Formatting issues detected, showing diff:" && cargo fmt --all && git diff && exit 1)
 
       - name: Check compilation
         working-directory: ece
