@@ -135,6 +135,7 @@ To ensure strict, fail-closed validation:
    - Positive Synthetic Envelope: [`docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json`](fixtures/envelope_valid_bootstrap_checkpoint.json) contains the verified RFC 8785 digest:
      `sha256:157aaebc73d8daecfc07aa8e8b706fdcd1d4b5909d55442144a194734c20199d`.
    - Negative Tampered Envelope: [`docs/gov-00/fixtures/envelope_invalid_tampered_digest.json`](fixtures/envelope_invalid_tampered_digest.json).
+   - **Content Consistency vs. Provenance:** A matching envelope digest establishes deterministic cryptographic content consistency between the envelope manifest and its payload. It does **not** establish author identity, origin provenance, or evaluation authority without external cryptographic signatures or trusted attestations.
 
 ---
 
