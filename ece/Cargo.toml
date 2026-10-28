@@ -1,0 +1,34 @@
+[package]
+name = "ece"
+version = "0.1.0"
+edition = "2021"
+description = "Evidence Checkpoint Engine — offline verifier CLI"
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+repository = "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine"
+
+[[bin]]
+name = "ece"
+path = "src/main.rs"
+
+[lib]
+name = "ece_lib"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+jsonschema = { version = "0.29", default-features = false }
+sha2 = "0.10"
+clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["clock"], default-features = false }
+uuid = { version = "1", features = ["v4"] }
+hex = "0.4"
+thiserror = "1"
+
+[dev-dependencies]
+# Uses std only; no dev deps needed.
+
+[profile.release]
+strip = true
+opt-level = "z"
+

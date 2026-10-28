@@ -1,0 +1,111 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [development]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: Linux x64
+          - os: macos-26
+            name: macOS ARM64
+          - os: windows-2025
+            name: Windows x64
+          - os: macos-26-intel
+            name: macOS Intel x64
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Check code formatting
+        working-directory: ece
+        run: cargo fmt --all -- --check
+
+      - name: Check compilation
+        working-directory: ece
+        run: cargo check --all-targets
+
+      - name: Clippy linter
+        working-directory: ece
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run test suite
+        working-directory: ece
+        run: cargo test
+
+      - name: Build release binary
+        working-directory: ece
+        run: cargo build --release
+
+      - name: Smoke test CLI (Unix)
+        if: runner.os != 'Windows'
+        working-directory: ece
+        run: |
+          set +e
+          ./target/release/ece verify-envelope \
+            --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
+            --schema-dir ../docs/gov-00/schemas
+          rc=$?
+          if [ $rc -ne 1 ]; then
+            echo "Expected exit code 1 for verify-envelope, got $rc"
+            exit 1
+          fi
+
+          ./target/release/ece inspect-untrusted-payload \
+            --input ../docs/gov-00/fixtures/input_valid_bootstrap_checkpoint.json \
+            --schema-dir ../docs/gov-00/schemas
+          rc=$?
+          if [ $rc -ne 3 ]; then
+            echo "Expected exit code 3 for inspect-untrusted-payload, got $rc"
+            exit 1
+          fi
+
+      - name: Smoke test CLI (Windows)
+        if: runner.os == 'Windows'
+        working-directory: ece
+        run: |
+          .\target\release\ece.exe verify-envelope `
+            --input ..\docs\gov-00\fixtures\envelope_valid_bootstrap_checkpoint.json `
+            --schema-dir ..\docs\gov-00\schemas
+          if ($LASTEXITCODE -ne 1) {
+            Write-Error "Expected exit code 1 for verify-envelope, got $LASTEXITCODE"
+            exit 1
+          }
+
+          .\target\release\ece.exe inspect-untrusted-payload `
+            --input ..\docs\gov-00\fixtures\input_valid_bootstrap_checkpoint.json `
+            --schema-dir ..\docs\gov-00\schemas
+          if ($LASTEXITCODE -ne 3) {
+            Write-Error "Expected exit code 3 for inspect-untrusted-payload, got $LASTEXITCODE"
+            exit 1
+          }
+        shell: pwsh

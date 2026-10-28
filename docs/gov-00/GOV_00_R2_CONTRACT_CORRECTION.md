@@ -86,7 +86,7 @@ $$\text{Preimage} = \text{RFC8785\_Canonicalize}(\text{payload})$$
 ### 3.4 Digest Verification Result
 
 For the positive bootstrap fixture `input_valid_bootstrap_checkpoint.json`:
-- **RFC 8785 Canonical Bytes Length:** 1,228 bytes.
+- **RFC 8785 Canonical Bytes Length:** 653 bytes (corrected in GOV-01 from old 1,228-byte estimate).
 - **Computed SHA-256 Digest:** `sha256:157aaebc73d8daecfc07aa8e8b706fdcd1d4b5909d55442144a194734c20199d`.
 - **Positive Fixture:** `envelope_valid_bootstrap_checkpoint.json` contains this exact digest and passes schema validation.
 - **Tampered Fixture:** `envelope_invalid_tampered_digest.json` modifies the digest to `...ffff`, demonstrating deterministic rejection by the verifier integrity check.
