@@ -356,7 +356,7 @@ mod tests {
 
     fn load_payload(fixture_name: &str) -> Value {
         let path = format!(
-            "{}/../../docs/gov-00/fixtures/{fixture_name}",
+            "{}/../docs/gov-00/fixtures/{fixture_name}",
             env!("CARGO_MANIFEST_DIR")
         );
         let bytes = std::fs::read(&path).unwrap_or_else(|_| panic!("cannot read {path}"));

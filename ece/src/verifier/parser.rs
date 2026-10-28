@@ -102,7 +102,7 @@ fn parse_checking_duplicates(text: &str) -> Result<Value, VerifierError> {
             while let Some(key) = map.next_key::<String>()? {
                 if !keys_seen.insert(key.clone()) {
                     return Err(serde::de::Error::custom(format!(
-                        "duplicate key: {key:?}"
+                        "DUPLICATE_KEY_TAG:{key}:END_DUPLICATE_KEY_TAG"
                     )));
                 }
                 let value: Value = map.next_value_seed(DupCheckSeed)?;
@@ -127,18 +127,18 @@ fn parse_checking_duplicates(text: &str) -> Result<Value, VerifierError> {
         .deserialize(&mut de)
         .map_err(|e| {
             let msg = e.to_string();
-            if msg.contains("duplicate key") {
-                // Extract the key name from the error message
-                let key = msg
-                    .strip_prefix("duplicate key: ")
-                    .unwrap_or(&msg)
-                    .trim_matches('"')
-                    .to_owned();
+            let tag_start = "DUPLICATE_KEY_TAG:";
+            let tag_end = ":END_DUPLICATE_KEY_TAG";
+            if let Some(start) = msg.find(tag_start) {
+                let rest = &msg[start + tag_start.len()..];
+                let key = if let Some(end) = rest.find(tag_end) {
+                    rest[..end].to_owned()
+                } else {
+                    rest.to_owned()
+                };
                 VerifierError::DuplicateKey { key }
             } else {
-                VerifierError::MalformedJson {
-                    detail: msg,
-                }
+                VerifierError::MalformedJson { detail: msg }
             }
         })?;
 
