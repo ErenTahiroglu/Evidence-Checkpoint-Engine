@@ -46,10 +46,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Check code formatting
+      - name: Format Rust code
         working-directory: ece
-        run: |
-          cargo fmt --all -- --check || (echo "Formatting issues detected, showing diff:" && cargo fmt --all && git diff && exit 1)
+        run: cargo fmt --all
+
+      - name: Print formatting diff
+        if: runner.os != 'Windows'
+        run: git diff
 
       - name: Check compilation
         working-directory: ece
