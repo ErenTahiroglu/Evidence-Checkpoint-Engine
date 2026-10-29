@@ -123,24 +123,22 @@ fn parse_checking_duplicates(text: &str) -> Result<Value, VerifierError> {
     }
 
     let mut de = serde_json::Deserializer::new(StrRead::new(text));
-    let value = DupCheckSeed
-        .deserialize(&mut de)
-        .map_err(|e| {
-            let msg = e.to_string();
-            let tag_start = "DUPLICATE_KEY_TAG:";
-            let tag_end = ":END_DUPLICATE_KEY_TAG";
-            if let Some(start) = msg.find(tag_start) {
-                let rest = &msg[start + tag_start.len()..];
-                let key = if let Some(end) = rest.find(tag_end) {
-                    rest[..end].to_owned()
-                } else {
-                    rest.to_owned()
-                };
-                VerifierError::DuplicateKey { key }
+    let value = DupCheckSeed.deserialize(&mut de).map_err(|e| {
+        let msg = e.to_string();
+        let tag_start = "DUPLICATE_KEY_TAG:";
+        let tag_end = ":END_DUPLICATE_KEY_TAG";
+        if let Some(start) = msg.find(tag_start) {
+            let rest = &msg[start + tag_start.len()..];
+            let key = if let Some(end) = rest.find(tag_end) {
+                rest[..end].to_owned()
             } else {
-                VerifierError::MalformedJson { detail: msg }
-            }
-        })?;
+                rest.to_owned()
+            };
+            VerifierError::DuplicateKey { key }
+        } else {
+            VerifierError::MalformedJson { detail: msg }
+        }
+    })?;
 
     // Ensure no trailing content after the JSON value
     de.end().map_err(|e| VerifierError::MalformedJson {
@@ -250,5 +248,3 @@ mod tests {
         assert!(parse_bounded_json(json.as_bytes()).is_ok());
     }
 }
-
-

@@ -57,10 +57,7 @@ pub fn run_semantic_checks(payload: &Value) -> Result<SemanticResult, VerifierEr
         // 4d. Missing expected jobs
         let missing = check_missing_jobs(ci);
         if !missing.is_empty() {
-            let msg = format!(
-                "Expected jobs not observed: {}",
-                missing.join(", ")
-            );
+            let msg = format!("Expected jobs not observed: {}", missing.join(", "));
             warnings.push(msg);
             unresolved_jobs.extend(missing);
         }
@@ -103,7 +100,9 @@ fn check_schema_version(payload: &Value) -> Result<(), VerifierError> {
     if v != "0.1.0-draft" {
         return Err(VerifierError::SemanticError {
             code: ErrorCode::UnsupportedVersion,
-            detail: format!("schema_version {v:?} is not supported; only \"0.1.0-draft\" is accepted"),
+            detail: format!(
+                "schema_version {v:?} is not supported; only \"0.1.0-draft\" is accepted"
+            ),
         });
     }
     Ok(())
@@ -148,9 +147,7 @@ fn check_git_sha_consistency(payload: &Value) -> Result<(), VerifierError> {
         .get("commit_sha")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let tree_hash = source
-        .get("tree_hash")
-        .and_then(|v| v.as_str());
+    let tree_hash = source.get("tree_hash").and_then(|v| v.as_str());
 
     let expected_len = match algo {
         "sha1" => 40usize,
@@ -221,7 +218,10 @@ fn check_job_status_conclusion(ci: &Value) -> Result<(), VerifierError> {
     };
 
     for job in observed {
-        let name = job.get("name").and_then(|v| v.as_str()).unwrap_or("<unnamed>");
+        let name = job
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<unnamed>");
         let status = job.get("status").and_then(|v| v.as_str()).unwrap_or("");
         let conclusion = job.get("conclusion");
 
@@ -302,7 +302,10 @@ fn check_missing_jobs(ci: &Value) -> Vec<String> {
 /// Detect self-injection in review_declarations: an AI agent claiming independent review.
 ///
 /// This is a soft guard; the schema also enforces review_type values.
-fn check_review_self_injection(payload: &Value, warnings: &mut Vec<String>) -> Result<(), VerifierError> {
+fn check_review_self_injection(
+    payload: &Value,
+    warnings: &mut Vec<String>,
+) -> Result<(), VerifierError> {
     let reviews = match payload
         .get("review_declarations")
         .and_then(|v| v.as_array())
@@ -375,7 +378,10 @@ mod tests {
         let payload = load_payload("input_invalid_uint64_overflow_edge.json");
         // github_rest_id = "18446744073709551616" (2^64, 1 over u64::MAX)
         match run_semantic_checks(&payload) {
-            Err(VerifierError::SemanticError { code: ErrorCode::Uint64Overflow, .. }) => {}
+            Err(VerifierError::SemanticError {
+                code: ErrorCode::Uint64Overflow,
+                ..
+            }) => {}
             other => panic!("expected Uint64Overflow, got: {other:?}"),
         }
     }
@@ -385,7 +391,10 @@ mod tests {
         let payload = load_payload("input_invalid_uint64_twenty_nines.json");
         // github_rest_id = "99999999999999999999" (20 nines, > u64::MAX)
         match run_semantic_checks(&payload) {
-            Err(VerifierError::SemanticError { code: ErrorCode::Uint64Overflow, .. }) => {}
+            Err(VerifierError::SemanticError {
+                code: ErrorCode::Uint64Overflow,
+                ..
+            }) => {}
             other => panic!("expected Uint64Overflow, got: {other:?}"),
         }
     }
@@ -395,7 +404,8 @@ mod tests {
         let payload = load_payload("input_invalid_git_sha1_with_sha256_length.json");
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::GitAlgorithmLengthMismatch, ..
+                code: ErrorCode::GitAlgorithmLengthMismatch,
+                ..
             }) => {}
             other => panic!("expected GitAlgorithmLengthMismatch, got: {other:?}"),
         }
@@ -406,7 +416,8 @@ mod tests {
         let payload = load_payload("input_invalid_git_sha256_with_sha1_length.json");
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::GitAlgorithmLengthMismatch, ..
+                code: ErrorCode::GitAlgorithmLengthMismatch,
+                ..
             }) => {}
             other => panic!("expected GitAlgorithmLengthMismatch, got: {other:?}"),
         }
@@ -416,7 +427,10 @@ mod tests {
     fn unsupported_schema_version_rejected() {
         let payload = load_payload("input_invalid_unsupported_schema_version.json");
         match run_semantic_checks(&payload) {
-            Err(VerifierError::SemanticError { code: ErrorCode::UnsupportedVersion, .. }) => {}
+            Err(VerifierError::SemanticError {
+                code: ErrorCode::UnsupportedVersion,
+                ..
+            }) => {}
             other => panic!("expected UnsupportedVersion, got: {other:?}"),
         }
     }
@@ -443,7 +457,10 @@ mod tests {
             }
         });
         match run_semantic_checks(&payload) {
-            Err(VerifierError::SemanticError { code: ErrorCode::DuplicateJobName, .. }) => {}
+            Err(VerifierError::SemanticError {
+                code: ErrorCode::DuplicateJobName,
+                ..
+            }) => {}
             other => panic!("expected DuplicateJobName, got: {other:?}"),
         }
     }
@@ -471,7 +488,8 @@ mod tests {
         });
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::InvalidJobStatusConclusion, ..
+                code: ErrorCode::InvalidJobStatusConclusion,
+                ..
             }) => {}
             other => panic!("expected InvalidJobStatusConclusion, got: {other:?}"),
         }
@@ -500,7 +518,8 @@ mod tests {
         });
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::InvalidJobStatusConclusion, ..
+                code: ErrorCode::InvalidJobStatusConclusion,
+                ..
             }) => {}
             other => panic!("expected InvalidJobStatusConclusion, got: {other:?}"),
         }
@@ -511,13 +530,18 @@ mod tests {
         let payload = load_payload("input_invalid_missing_ci_jobs.json");
         // expected: ["test", "lint", "security-audit"], observed: ["test"] only
         let result = run_semantic_checks(&payload).expect("should not be fatal");
-        assert!(!result.unresolved_jobs.is_empty(), "should have unresolved jobs");
+        assert!(
+            !result.unresolved_jobs.is_empty(),
+            "should have unresolved jobs"
+        );
         assert!(
             result.unresolved_jobs.contains(&"lint".to_owned()),
             "lint should be unresolved"
         );
         assert!(
-            result.unresolved_jobs.contains(&"security-audit".to_owned()),
+            result
+                .unresolved_jobs
+                .contains(&"security-audit".to_owned()),
             "security-audit should be unresolved"
         );
     }
@@ -527,7 +551,8 @@ mod tests {
         let payload = load_payload("input_invalid_ci_missing_policy.json");
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::MissingPolicyReference, ..
+                code: ErrorCode::MissingPolicyReference,
+                ..
             }) => {}
             other => panic!("expected MissingPolicyReference, got: {other:?}"),
         }
@@ -551,10 +576,10 @@ mod tests {
         });
         match run_semantic_checks(&payload) {
             Err(VerifierError::SemanticError {
-                code: ErrorCode::SelfInjectionAttempt, ..
+                code: ErrorCode::SelfInjectionAttempt,
+                ..
             }) => {}
             other => panic!("expected SelfInjectionAttempt, got: {other:?}"),
         }
     }
 }
-

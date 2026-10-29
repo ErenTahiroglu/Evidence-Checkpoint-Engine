@@ -305,7 +305,9 @@ fn test_emitted_assessment_refused_syntax_error_exit_3_conforms_to_schema() {
         "refused assessment must not fabricate fake repository_id"
     );
     assert_eq!(
-        output.assessment.pointer("/evaluated_target/target_commit_sha"),
+        output
+            .assessment
+            .pointer("/evaluated_target/target_commit_sha"),
         Some(&Value::Null),
         "refused assessment must not fabricate fake target_commit_sha"
     );
@@ -321,9 +323,9 @@ fn test_emitted_assessment_inspect_untrusted_exit_3_conforms_to_schema() {
     let output = inspect_payload(&bytes, &schema_dir());
 
     assert_eq!(output.exit_code, 3);
-    store
-        .validate_assessment(&output.assessment)
-        .expect("emitted exit 3 inspect-untrusted assessment must conform to assessment-output.schema.json");
+    store.validate_assessment(&output.assessment).expect(
+        "emitted exit 3 inspect-untrusted assessment must conform to assessment-output.schema.json",
+    );
 }
 
 #[test]
@@ -343,7 +345,7 @@ fn test_emitted_assessment_operational_error_exit_4_conforms_to_schema() {
         Some(&Value::Null),
         "operational error assessment must not fabricate fake repository_id"
     );
-    store
-        .validate_assessment(&output.assessment)
-        .expect("emitted exit 4 operational error assessment must conform to assessment-output.schema.json");
+    store.validate_assessment(&output.assessment).expect(
+        "emitted exit 4 operational error assessment must conform to assessment-output.schema.json",
+    );
 }

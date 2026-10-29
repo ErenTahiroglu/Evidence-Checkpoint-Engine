@@ -1,9 +1,6 @@
 // digest.rs — SHA-256 digest computation and envelope digest verification.
 
-use crate::verifier::{
-    canonicalize::canonicalize,
-    error::VerifierError,
-};
+use crate::verifier::{canonicalize::canonicalize, error::VerifierError};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -120,4 +117,3 @@ mod tests {
         assert!(result2.is_ok(), "correct digest should pass: {result2:?}");
     }
 }
-

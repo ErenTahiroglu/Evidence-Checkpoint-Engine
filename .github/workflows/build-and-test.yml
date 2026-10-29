@@ -46,15 +46,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Format Rust code
+      - name: Check Rust formatting
         working-directory: ece
-        run: |
-          cargo fmt --all
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            echo "=== BEGIN FMT PATCH ==="
-            git diff
-            echo "=== END FMT PATCH ==="
-          fi
+        run: cargo fmt --all -- --check
 
       - name: Check compilation
         working-directory: ece

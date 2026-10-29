@@ -33,7 +33,10 @@ fn test_tampered_envelope_digest_rejected() {
 
     assert_eq!(output.exit_code, 2);
     assert_eq!(
-        output.assessment.pointer("/derived_summary/verdict").unwrap(),
+        output
+            .assessment
+            .pointer("/derived_summary/verdict")
+            .unwrap(),
         "ASSESSED_FAIL"
     );
     assert_eq!(
@@ -71,7 +74,10 @@ fn test_malformed_json_syntax_rejected() {
     let output = verify_envelope(&bytes, &schema_dir());
     assert_eq!(output.exit_code, 3);
     assert_eq!(
-        output.assessment.pointer("/derived_summary/verdict").unwrap(),
+        output
+            .assessment
+            .pointer("/derived_summary/verdict")
+            .unwrap(),
         "REFUSED"
     );
 }
@@ -202,6 +208,7 @@ fn test_synthetic_claiming_pass_or_human_auth_rejected() {
 fn test_missing_expected_jobs_recorded() {
     let bytes = load_fixture("input_invalid_missing_ci_jobs.json");
     let val: Value = serde_json::from_slice(&bytes).unwrap();
-    let res = ece_lib::verifier::run_semantic_checks(&val).expect("semantic checks should pass with warning");
+    let res = ece_lib::verifier::run_semantic_checks(&val)
+        .expect("semantic checks should pass with warning");
     assert!(!res.unresolved_jobs.is_empty());
 }

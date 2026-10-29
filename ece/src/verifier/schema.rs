@@ -61,14 +61,12 @@ impl SchemaStore {
         let input_schema: Value = serde_json::from_str(&input_text).map_err(|e| {
             VerifierError::SchemaIo(format!("cannot parse checkpoint-input schema: {e}"))
         })?;
-        let envelope_schema: Value =
-            serde_json::from_str(&envelope_text).map_err(|e| {
-                VerifierError::SchemaIo(format!("cannot parse checkpoint-envelope schema: {e}"))
-            })?;
-        let assessment_schema: Value =
-            serde_json::from_str(&assessment_text).map_err(|e| {
-                VerifierError::SchemaIo(format!("cannot parse assessment-output schema: {e}"))
-            })?;
+        let envelope_schema: Value = serde_json::from_str(&envelope_text).map_err(|e| {
+            VerifierError::SchemaIo(format!("cannot parse checkpoint-envelope schema: {e}"))
+        })?;
+        let assessment_schema: Value = serde_json::from_str(&assessment_text).map_err(|e| {
+            VerifierError::SchemaIo(format!("cannot parse assessment-output schema: {e}"))
+        })?;
 
         // Extract $id values for registration
         let input_id = schema_id(&input_schema, "checkpoint-input")?;
@@ -81,9 +79,18 @@ impl SchemaStore {
         schema_map.insert(envelope_id.clone(), envelope_schema.clone());
         schema_map.insert(assessment_id.clone(), assessment_schema.clone());
         // Also register by filename (relative $ref may use just the filename)
-        schema_map.insert("checkpoint-input.schema.json".to_owned(), input_schema.clone());
-        schema_map.insert("checkpoint-envelope.schema.json".to_owned(), envelope_schema.clone());
-        schema_map.insert("assessment-output.schema.json".to_owned(), assessment_schema.clone());
+        schema_map.insert(
+            "checkpoint-input.schema.json".to_owned(),
+            input_schema.clone(),
+        );
+        schema_map.insert(
+            "checkpoint-envelope.schema.json".to_owned(),
+            envelope_schema.clone(),
+        );
+        schema_map.insert(
+            "assessment-output.schema.json".to_owned(),
+            assessment_schema.clone(),
+        );
 
         let retriever = LocalRetriever {
             schemas: schema_map,
@@ -95,10 +102,9 @@ impl SchemaStore {
         let envelope_validator = build_validator(&envelope_schema, retriever.clone())
             .map_err(|e| VerifierError::SchemaIo(format!("cannot compile envelope schema: {e}")))?;
 
-        let assessment_validator = build_validator(&assessment_schema, retriever)
-            .map_err(|e| {
-                VerifierError::SchemaIo(format!("cannot compile assessment schema: {e}"))
-            })?;
+        let assessment_validator = build_validator(&assessment_schema, retriever).map_err(|e| {
+            VerifierError::SchemaIo(format!("cannot compile assessment schema: {e}"))
+        })?;
 
         Ok(SchemaStore {
             envelope_validator,
@@ -288,4 +294,3 @@ mod tests {
         );
     }
 }
-

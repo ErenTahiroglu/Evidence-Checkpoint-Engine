@@ -8,11 +8,7 @@
 // The best possible outcome for a structurally valid envelope with matching
 // digest is ASSESSED_LIMITATIONS (exit 1).
 
-use crate::verifier::{
-    error::VerifierError,
-    schema::SchemaStore,
-    semantic::SemanticResult,
-};
+use crate::verifier::{error::VerifierError, schema::SchemaStore, semantic::SemanticResult};
 use chrono::Utc;
 use serde_json::{json, Value};
 use std::path::Path;
@@ -64,7 +60,8 @@ pub fn extract_valid_repo_id(payload: &Value) -> Option<String> {
 pub fn extract_valid_commit_sha(payload: &Value) -> Option<String> {
     let s = payload.pointer("/source/commit_sha")?.as_str()?;
     if (s.len() == 40 || s.len() == 64)
-        && s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        && s.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
     {
         Some(s.to_owned())
     } else {
@@ -109,11 +106,7 @@ pub fn build_assessment_limitations(
         .map(|a| a.len())
         .unwrap_or(0);
 
-    let unresolved_jobs: Vec<Value> = semantic
-        .unresolved_jobs
-        .iter()
-        .map(|s| json!(s))
-        .collect();
+    let unresolved_jobs: Vec<Value> = semantic.unresolved_jobs.iter().map(|s| json!(s)).collect();
 
     let mut all_warnings: Vec<Value> = vec![
         json!("OFFLINE_MVP: CI execution authenticity cannot be established without live GitHub API access"),
@@ -372,7 +365,10 @@ pub fn build_assessment_digest_fail(
 
 /// Construct an error/refused assessment (exit 3 or 4).
 /// Never synthesizes fake repository IDs or commit SHAs.
-pub fn build_assessment_refused(error: &VerifierError, payload: Option<&Value>) -> VerificationOutput {
+pub fn build_assessment_refused(
+    error: &VerifierError,
+    payload: Option<&Value>,
+) -> VerificationOutput {
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let exit_code = error.exit_code();
@@ -501,10 +497,16 @@ pub fn build_assessment_inspect_untrusted(
     let claimed_producer = extract_opt_str(payload, "/producer/declared_by");
     let claimed_checkpoint = extract_opt_str(payload, "/checkpoint_id");
 
-    let schema_status = if schema_errors.is_some() { "CORRUPT" } else { "VALID" };
+    let schema_status = if schema_errors.is_some() {
+        "CORRUPT"
+    } else {
+        "VALID"
+    };
     let schema_detail = schema_errors
         .map(|e| format!("Schema errors: {e}"))
-        .unwrap_or_else(|| "Structural schema validation passed (envelope digest NOT verified)".to_owned());
+        .unwrap_or_else(|| {
+            "Structural schema validation passed (envelope digest NOT verified)".to_owned()
+        });
 
     let mut warnings = vec![
         json!("UNTRUSTED_DIAGNOSTIC: This is inspect-untrusted-payload output — envelope digest verification was bypassed"),
@@ -719,12 +721,16 @@ pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     };
 
     // Schema validation (payload only — no envelope digest)
-    let schema_error = store.validate_payload(&payload).err().map(|e| e.to_string());
+    let schema_error = store
+        .validate_payload(&payload)
+        .err()
+        .map(|e| e.to_string());
 
     // Semantic checks (best-effort, non-fatal for this mode)
     let semantic = crate::verifier::semantic::run_semantic_checks(&payload).ok();
 
-    let out = build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref());
+    let out =
+        build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref());
     validate_emitted_assessment(&store, &out);
     out
 }
