@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
     about = "Evidence Checkpoint Engine — offline verifier CLI"
 )]
 struct Cli {
-    #[arg(long, help = "Path to directory containing draft schemas")]
+    #[arg(long, global = true, help = "Path to directory containing draft schemas")]
     schema_dir: Option<PathBuf>,
 
     #[command(subcommand)]
