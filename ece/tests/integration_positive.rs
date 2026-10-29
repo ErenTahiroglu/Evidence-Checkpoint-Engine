@@ -1,7 +1,8 @@
 // integration_positive.rs — Positive integration tests for Evidence Checkpoint Engine.
 
 use ece_lib::verifier::{
-    canonicalize, compute_digest, inspect_payload, verify_envelope, SchemaStore,
+    build_assessment_refused, canonicalize, compute_digest, inspect_payload, verify_envelope,
+    SchemaStore, VerifierError,
 };
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -236,4 +237,113 @@ fn test_valid_synthetic_assessment_handled_as_synthetic() {
             .unwrap(),
         false
     );
+}
+
+#[test]
+fn test_rfc8785_ecmascript_number_vectors() {
+    let cases: Vec<(Value, &[u8])> = vec![
+        (json!(1.0), b"1"),
+        (json!(0.0), b"0"),
+        (json!(-0.0), b"0"),
+        (json!(1e30), b"1e+30"),
+        (json!(2e-3), b"0.002"),
+        (json!(1e-6), b"0.000001"),
+        (json!(1e-7), b"1e-7"),
+        (json!(1e20), b"100000000000000000000"),
+        (json!(1e21), b"1e+21"),
+        (json!(5e-324), b"5e-324"),
+        (json!(-1.5), b"-1.5"),
+    ];
+
+    for (val, expected) in cases {
+        let actual = canonicalize(&val).expect("canonicalization must succeed");
+        assert_eq!(
+            actual,
+            expected,
+            "mismatch for value: {}, expected: {}, got: {}",
+            val,
+            std::str::from_utf8(expected).unwrap(),
+            std::str::from_utf8(&actual).unwrap()
+        );
+    }
+}
+
+#[test]
+fn test_emitted_assessment_valid_envelope_exit_1_conforms_to_schema() {
+    let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
+    let bytes = load_fixture("envelope_valid_bootstrap_checkpoint.json");
+    let output = verify_envelope(&bytes, &schema_dir());
+
+    assert_eq!(output.exit_code, 1);
+    store
+        .validate_assessment(&output.assessment)
+        .expect("emitted exit 1 assessment must conform to assessment-output.schema.json");
+}
+
+#[test]
+fn test_emitted_assessment_digest_mismatch_exit_2_conforms_to_schema() {
+    let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
+    let bytes = load_fixture("envelope_invalid_tampered_digest.json");
+    let output = verify_envelope(&bytes, &schema_dir());
+
+    assert_eq!(output.exit_code, 2);
+    store
+        .validate_assessment(&output.assessment)
+        .expect("emitted exit 2 assessment must conform to assessment-output.schema.json");
+}
+
+#[test]
+fn test_emitted_assessment_refused_syntax_error_exit_3_conforms_to_schema() {
+    let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
+    let bytes = load_fixture("input_malformed_syntax.txt");
+    let output = verify_envelope(&bytes, &schema_dir());
+
+    assert_eq!(output.exit_code, 3);
+    assert_eq!(
+        output.assessment.pointer("/evaluated_target/repository_id"),
+        Some(&Value::Null),
+        "refused assessment must not fabricate fake repository_id"
+    );
+    assert_eq!(
+        output.assessment.pointer("/evaluated_target/target_commit_sha"),
+        Some(&Value::Null),
+        "refused assessment must not fabricate fake target_commit_sha"
+    );
+    store
+        .validate_assessment(&output.assessment)
+        .expect("emitted exit 3 refused assessment must conform to assessment-output.schema.json");
+}
+
+#[test]
+fn test_emitted_assessment_inspect_untrusted_exit_3_conforms_to_schema() {
+    let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
+    let bytes = load_fixture("input_valid_bootstrap_checkpoint.json");
+    let output = inspect_payload(&bytes, &schema_dir());
+
+    assert_eq!(output.exit_code, 3);
+    store
+        .validate_assessment(&output.assessment)
+        .expect("emitted exit 3 inspect-untrusted assessment must conform to assessment-output.schema.json");
+}
+
+#[test]
+fn test_emitted_assessment_operational_error_exit_4_conforms_to_schema() {
+    let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
+    let op_error = VerifierError::SchemaIo("schema file missing".to_owned());
+    assert_eq!(op_error.exit_code(), 4);
+    let output = build_assessment_refused(&op_error, None);
+
+    assert_eq!(output.exit_code, 4);
+    assert_eq!(
+        output.assessment.pointer("/derived_summary/verdict"),
+        Some(&json!("REFUSED"))
+    );
+    assert_eq!(
+        output.assessment.pointer("/evaluated_target/repository_id"),
+        Some(&Value::Null),
+        "operational error assessment must not fabricate fake repository_id"
+    );
+    store
+        .validate_assessment(&output.assessment)
+        .expect("emitted exit 4 operational error assessment must conform to assessment-output.schema.json");
 }

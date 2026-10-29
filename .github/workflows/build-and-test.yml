@@ -46,9 +46,25 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Format Rust code
+      - name: Generate and dump lockfile
+        if: matrix.os == 'ubuntu-24.04'
         working-directory: ece
-        run: cargo fmt --all
+        run: |
+          cargo generate-lockfile
+          echo "=== BEGIN CARGO.LOCK ==="
+          cat Cargo.lock
+          echo "=== END CARGO.LOCK ==="
+
+      - name: Upload lockfile artifact
+        if: matrix.os == 'ubuntu-24.04'
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb99ba841f  # v4.6.1
+        with:
+          name: cargo-lockfile
+          path: ece/Cargo.lock
+
+      - name: Check Rust formatting
+        working-directory: ece
+        run: cargo fmt --all -- --check
 
       - name: Check compilation
         working-directory: ece

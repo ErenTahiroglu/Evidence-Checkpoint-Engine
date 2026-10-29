@@ -24,6 +24,54 @@ pub struct VerificationOutput {
     pub exit_code: i32,
 }
 
+/// Helper to validate emitted assessment against assessment-output.schema.json.
+/// In debug mode (including tests), panics on schema violation to fail immediately.
+/// In release mode, logs error to stderr.
+fn validate_emitted_assessment(store: &SchemaStore, output: &VerificationOutput) {
+    if let Err(e) = store.validate_assessment(&output.assessment) {
+        eprintln!("ECE_ASSESSMENT_SCHEMA_VIOLATION: {e}");
+        #[cfg(debug_assertions)]
+        panic!("Emitted assessment violates assessment-output.schema.json: {e}");
+    }
+}
+
+/// Extract an optional string property by JSON pointer.
+pub fn extract_opt_str(value: &Value, pointer: &str) -> Option<String> {
+    value
+        .pointer(pointer)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_owned())
+}
+
+/// Extract and validate repository_id: must match ^[1-9][0-9]{0,19}$ and parse as u64.
+/// Returns None if absent or invalid.
+pub fn extract_valid_repo_id(payload: &Value) -> Option<String> {
+    let s = payload.pointer("/repository/github_rest_id")?.as_str()?;
+    if !s.is_empty()
+        && s.chars().all(|c| c.is_ascii_digit())
+        && !s.starts_with('0')
+        && s.len() <= 20
+        && s.parse::<u64>().is_ok()
+    {
+        Some(s.to_owned())
+    } else {
+        None
+    }
+}
+
+/// Extract and validate commit_sha: must match ^[0-9a-f]{40,64}$.
+/// Returns None if absent or invalid.
+pub fn extract_valid_commit_sha(payload: &Value) -> Option<String> {
+    let s = payload.pointer("/source/commit_sha")?.as_str()?;
+    if (s.len() == 40 || s.len() == 64)
+        && s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    {
+        Some(s.to_owned())
+    } else {
+        None
+    }
+}
+
 /// Construct a complete assessment for a valid envelope with matching digest.
 ///
 /// This is the SUCCESS path: schema valid, digest matches, semantic checks passed.
@@ -38,11 +86,11 @@ pub fn build_assessment_limitations(
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-    let repo_id = extract_str(payload, "/repository/github_rest_id");
-    let repo_owner = extract_str(payload, "/repository/owner");
-    let repo_name = extract_str(payload, "/repository/name");
-    let commit_sha = extract_str(payload, "/source/commit_sha");
-    let checkpoint_id = extract_str(payload, "/checkpoint_id");
+    let repo_id = extract_valid_repo_id(payload);
+    let repo_owner = extract_opt_str(payload, "/repository/owner");
+    let repo_name = extract_opt_str(payload, "/repository/name");
+    let commit_sha = extract_valid_commit_sha(payload);
+    let checkpoint_id = extract_opt_str(payload, "/checkpoint_id");
 
     let ci_status = if payload.get("ci_evidence").is_some() {
         "UNVERIFIED_RUN"
@@ -106,8 +154,9 @@ pub fn build_assessment_limitations(
         json!("Artifact download and digest re-verification"),
     ];
 
-    let producer_declared_by = extract_str(payload, "/producer/declared_by");
-    let checkpoint_id_str = extract_str(payload, "/checkpoint_id");
+    let claimed_phase = extract_opt_str(payload, "/phase");
+    let claimed_producer = extract_opt_str(payload, "/producer/declared_by");
+    let claimed_checkpoint = extract_opt_str(payload, "/checkpoint_id");
 
     let assessment = json!({
         "schema_version": "0.1.0-draft",
@@ -142,11 +191,11 @@ pub fn build_assessment_limitations(
                 "unresolved_jobs": unresolved_jobs
             },
             "evidence_availability": {
-                "status": "NOT_EVALUATED",
+                "status": "NOT_PROVIDED",
                 "expired_references": []
             },
             "review_status": {
-                "status": "NOT_EVALUATED",
+                "status": "UNREVIEWED",
                 "tier": "NONE",
                 "scope": "Offline MVP: independent review verification unavailable",
                 "reviewer_identity": null
@@ -157,7 +206,7 @@ pub fn build_assessment_limitations(
                 "authorization_scope": "Offline MVP: human owner authorization cannot be established"
             },
             "freshness": {
-                "status": "NOT_EVALUATED",
+                "status": "UNKNOWN_HEAD",
                 "live_head_sha": null
             }
         },
@@ -168,9 +217,9 @@ pub fn build_assessment_limitations(
         },
         "claims_breakdown": {
             "source_declared": {
-                "claimed_phase": extract_str(payload, "/phase"),
-                "claimed_producer": producer_declared_by,
-                "claimed_checkpoint_id": checkpoint_id_str
+                "claimed_phase": claimed_phase,
+                "claimed_producer": claimed_producer,
+                "claimed_checkpoint_id": claimed_checkpoint
             },
             "machine_assessed": {
                 "sha_verified": false,
@@ -206,11 +255,15 @@ pub fn build_assessment_digest_fail(
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-    let repo_id = extract_str(payload, "/repository/github_rest_id");
-    let repo_owner = extract_str(payload, "/repository/owner");
-    let repo_name = extract_str(payload, "/repository/name");
-    let commit_sha = extract_str(payload, "/source/commit_sha");
-    let checkpoint_id = extract_str(payload, "/checkpoint_id");
+    let repo_id = extract_valid_repo_id(payload);
+    let repo_owner = extract_opt_str(payload, "/repository/owner");
+    let repo_name = extract_opt_str(payload, "/repository/name");
+    let commit_sha = extract_valid_commit_sha(payload);
+    let checkpoint_id = extract_opt_str(payload, "/checkpoint_id");
+
+    let claimed_phase = extract_opt_str(payload, "/phase");
+    let claimed_producer = extract_opt_str(payload, "/producer/declared_by");
+    let claimed_checkpoint = extract_opt_str(payload, "/checkpoint_id");
 
     let assessment = json!({
         "schema_version": "0.1.0-draft",
@@ -248,11 +301,11 @@ pub fn build_assessment_digest_fail(
                 "unresolved_jobs": []
             },
             "evidence_availability": {
-                "status": "NOT_EVALUATED",
+                "status": "NOT_PROVIDED",
                 "expired_references": []
             },
             "review_status": {
-                "status": "NOT_EVALUATED",
+                "status": "UNREVIEWED",
                 "tier": "NONE",
                 "scope": "Verification aborted due to digest mismatch",
                 "reviewer_identity": null
@@ -263,7 +316,7 @@ pub fn build_assessment_digest_fail(
                 "authorization_scope": null
             },
             "freshness": {
-                "status": "NOT_EVALUATED",
+                "status": "UNKNOWN_HEAD",
                 "live_head_sha": null
             }
         },
@@ -276,9 +329,9 @@ pub fn build_assessment_digest_fail(
         },
         "claims_breakdown": {
             "source_declared": {
-                "claimed_phase": extract_str(payload, "/phase"),
-                "claimed_producer": extract_str(payload, "/producer/declared_by"),
-                "claimed_checkpoint_id": checkpoint_id
+                "claimed_phase": claimed_phase,
+                "claimed_producer": claimed_producer,
+                "claimed_checkpoint_id": claimed_checkpoint
             },
             "machine_assessed": {
                 "sha_verified": false,
@@ -318,11 +371,22 @@ pub fn build_assessment_digest_fail(
 }
 
 /// Construct an error/refused assessment (exit 3 or 4).
-pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
+/// Never synthesizes fake repository IDs or commit SHAs.
+pub fn build_assessment_refused(error: &VerifierError, payload: Option<&Value>) -> VerificationOutput {
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let exit_code = error.exit_code();
     let verdict = "REFUSED";
+
+    let repo_id = payload.and_then(extract_valid_repo_id);
+    let repo_owner = payload.and_then(|p| extract_opt_str(p, "/repository/owner"));
+    let repo_name = payload.and_then(|p| extract_opt_str(p, "/repository/name"));
+    let commit_sha = payload.and_then(extract_valid_commit_sha);
+    let checkpoint_id = payload.and_then(|p| extract_opt_str(p, "/checkpoint_id"));
+
+    let claimed_phase = payload.and_then(|p| extract_opt_str(p, "/phase"));
+    let claimed_producer = payload.and_then(|p| extract_opt_str(p, "/producer/declared_by"));
+    let claimed_checkpoint = payload.and_then(|p| extract_opt_str(p, "/checkpoint_id"));
 
     let assessment = json!({
         "schema_version": "0.1.0-draft",
@@ -338,11 +402,11 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
         },
         "evaluation_timestamp": now,
         "evaluated_target": {
-            "repository_id": "UNKNOWN",
-            "repository_owner": "UNKNOWN",
-            "repository_name": "UNKNOWN",
-            "target_commit_sha": "0000000000000000000000000000000000000000",
-            "evaluated_checkpoint_id": "UNKNOWN"
+            "repository_id": repo_id,
+            "repository_owner": repo_owner,
+            "repository_name": repo_name,
+            "target_commit_sha": commit_sha,
+            "evaluated_checkpoint_id": checkpoint_id
         },
         "dimensions": {
             "evidence_integrity": {
@@ -357,13 +421,13 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
                 "unresolved_jobs": []
             },
             "evidence_availability": {
-                "status": "NOT_EVALUATED",
+                "status": "NOT_PROVIDED",
                 "expired_references": []
             },
             "review_status": {
-                "status": "NOT_EVALUATED",
+                "status": "UNREVIEWED",
                 "tier": "NONE",
-                "scope": "Verification refused due to input error",
+                "scope": "Verification refused due to input or operational error",
                 "reviewer_identity": null
             },
             "authorization": {
@@ -372,7 +436,7 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
                 "authorization_scope": null
             },
             "freshness": {
-                "status": "NOT_EVALUATED",
+                "status": "UNKNOWN_HEAD",
                 "live_head_sha": null
             }
         },
@@ -385,8 +449,9 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
         },
         "claims_breakdown": {
             "source_declared": {
-                "claimed_phase": "UNKNOWN",
-                "claimed_producer": "UNKNOWN"
+                "claimed_phase": claimed_phase,
+                "claimed_producer": claimed_producer,
+                "claimed_checkpoint_id": claimed_checkpoint
             },
             "machine_assessed": {
                 "sha_verified": false,
@@ -403,7 +468,7 @@ pub fn build_assessment_refused(error: &VerifierError) -> VerificationOutput {
         },
         "checks_performed": [],
         "checks_omitted": [
-            "Full verification (aborted due to fatal input error)"
+            "Full verification (aborted due to fatal input or operational error)"
         ],
         "exit_code": exit_code
     });
@@ -426,11 +491,15 @@ pub fn build_assessment_inspect_untrusted(
     let assessment_id = format!("eval-{}", Uuid::new_v4());
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-    let repo_id = extract_str(payload, "/repository/github_rest_id");
-    let repo_owner = extract_str(payload, "/repository/owner");
-    let repo_name = extract_str(payload, "/repository/name");
-    let commit_sha = extract_str(payload, "/source/commit_sha");
-    let checkpoint_id = extract_str(payload, "/checkpoint_id");
+    let repo_id = extract_valid_repo_id(payload);
+    let repo_owner = extract_opt_str(payload, "/repository/owner");
+    let repo_name = extract_opt_str(payload, "/repository/name");
+    let commit_sha = extract_valid_commit_sha(payload);
+    let checkpoint_id = extract_opt_str(payload, "/checkpoint_id");
+
+    let claimed_phase = extract_opt_str(payload, "/phase");
+    let claimed_producer = extract_opt_str(payload, "/producer/declared_by");
+    let claimed_checkpoint = extract_opt_str(payload, "/checkpoint_id");
 
     let schema_status = if schema_errors.is_some() { "CORRUPT" } else { "VALID" };
     let schema_detail = schema_errors
@@ -481,11 +550,11 @@ pub fn build_assessment_inspect_untrusted(
                 "unresolved_jobs": []
             },
             "evidence_availability": {
-                "status": "NOT_EVALUATED",
+                "status": "NOT_PROVIDED",
                 "expired_references": []
             },
             "review_status": {
-                "status": "NOT_EVALUATED",
+                "status": "UNREVIEWED",
                 "tier": "NONE",
                 "scope": "Diagnostic inspection only — not a verification result",
                 "reviewer_identity": null
@@ -496,7 +565,7 @@ pub fn build_assessment_inspect_untrusted(
                 "authorization_scope": null
             },
             "freshness": {
-                "status": "NOT_EVALUATED",
+                "status": "UNKNOWN_HEAD",
                 "live_head_sha": null
             }
         },
@@ -509,9 +578,9 @@ pub fn build_assessment_inspect_untrusted(
         },
         "claims_breakdown": {
             "source_declared": {
-                "claimed_phase": extract_str(payload, "/phase"),
-                "claimed_producer": extract_str(payload, "/producer/declared_by"),
-                "claimed_checkpoint_id": checkpoint_id
+                "claimed_phase": claimed_phase,
+                "claimed_producer": claimed_producer,
+                "claimed_checkpoint_id": claimed_checkpoint
             },
             "machine_assessed": {
                 "sha_verified": false,
@@ -557,31 +626,44 @@ pub fn build_assessment_inspect_untrusted(
 /// 3. Digest verification (RFC 8785 + SHA-256)
 /// 4. Semantic checks on the inner payload
 /// 5. Build six-dimensional assessment
+/// 6. Validate assessment against assessment-output.schema.json
 pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOutput {
     // Load schemas (may fail if schema dir missing — operational error, exit 4)
     let store = match SchemaStore::load(schema_dir) {
         Ok(s) => s,
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => return build_assessment_refused(&e, None),
     };
 
     // 1. Bounded parse
     let envelope = match crate::verifier::parser::parse_bounded_json(input_bytes) {
         Ok(v) => v,
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => {
+            let out = build_assessment_refused(&e, None);
+            validate_emitted_assessment(&store, &out);
+            return out;
+        }
     };
 
     // 2. Schema validation (envelope validates payload via $ref inline)
     if let Err(e) = store.validate_envelope(&envelope) {
-        return build_assessment_refused(&e);
+        let payload = envelope.get("payload");
+        let out = build_assessment_refused(&e, payload);
+        validate_emitted_assessment(&store, &out);
+        return out;
     }
 
     // Extract payload for downstream steps
     let payload = match envelope.get("payload") {
         Some(p) => p.clone(),
         None => {
-            return build_assessment_refused(&VerifierError::InternalError(
-                "envelope missing payload after schema validation".to_owned(),
-            ))
+            let out = build_assessment_refused(
+                &VerifierError::InternalError(
+                    "envelope missing payload after schema validation".to_owned(),
+                ),
+                None,
+            );
+            validate_emitted_assessment(&store, &out);
+            return out;
         }
     };
 
@@ -589,19 +671,31 @@ pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     let digest = match crate::verifier::digest::verify_envelope_digest(&envelope) {
         Ok(d) => d,
         Err(VerifierError::DigestMismatch { expected, computed }) => {
-            return build_assessment_digest_fail(&payload, &expected, &computed);
+            let out = build_assessment_digest_fail(&payload, &expected, &computed);
+            validate_emitted_assessment(&store, &out);
+            return out;
         }
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => {
+            let out = build_assessment_refused(&e, Some(&payload));
+            validate_emitted_assessment(&store, &out);
+            return out;
+        }
     };
 
     // 4. Semantic checks
     let semantic = match crate::verifier::semantic::run_semantic_checks(&payload) {
         Ok(s) => s,
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => {
+            let out = build_assessment_refused(&e, Some(&payload));
+            validate_emitted_assessment(&store, &out);
+            return out;
+        }
     };
 
     // 5. Build limitations assessment (best achievable offline)
-    build_assessment_limitations(&payload, &digest, &semantic)
+    let out = build_assessment_limitations(&payload, &digest, &semantic);
+    validate_emitted_assessment(&store, &out);
+    out
 }
 
 /// Run the `inspect-untrusted-payload` pipeline (diagnostic only).
@@ -611,13 +705,17 @@ pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     // Load schemas
     let store = match SchemaStore::load(schema_dir) {
         Ok(s) => s,
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => return build_assessment_refused(&e, None),
     };
 
     // Bounded parse
     let payload = match crate::verifier::parser::parse_bounded_json(input_bytes) {
         Ok(v) => v,
-        Err(e) => return build_assessment_refused(&e),
+        Err(e) => {
+            let out = build_assessment_refused(&e, None);
+            validate_emitted_assessment(&store, &out);
+            return out;
+        }
     };
 
     // Schema validation (payload only — no envelope digest)
@@ -626,14 +724,7 @@ pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     // Semantic checks (best-effort, non-fatal for this mode)
     let semantic = crate::verifier::semantic::run_semantic_checks(&payload).ok();
 
-    build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref())
+    let out = build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref());
+    validate_emitted_assessment(&store, &out);
+    out
 }
-
-fn extract_str(value: &Value, pointer: &str) -> String {
-    value
-        .pointer(pointer)
-        .and_then(|v| v.as_str())
-        .unwrap_or("UNKNOWN")
-        .to_owned()
-}
-

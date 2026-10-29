@@ -78,14 +78,14 @@
       ],
       "properties": {
         "repository_id": {
-          "type": "string",
+          "type": ["string", "null"],
           "pattern": "^[1-9][0-9]{0,19}$",
-          "description": "Canonical decimal string of repository ID. Bounded by uint64::MAX (18446744073709551615) during semantic validation."
+          "description": "Canonical decimal string of repository ID. Bounded by uint64::MAX (18446744073709551615) during semantic validation. Null when input cannot be parsed or target is unspecified."
         },
-        "repository_owner": { "type": "string" },
-        "repository_name": { "type": "string" },
-        "target_commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
-        "evaluated_checkpoint_id": { "type": "string" }
+        "repository_owner": { "type": ["string", "null"] },
+        "repository_name": { "type": ["string", "null"] },
+        "target_commit_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40,64}$" },
+        "evaluated_checkpoint_id": { "type": ["string", "null"] }
       }
     },
     "dimensions": {
@@ -154,7 +154,8 @@
                 "PARTIALLY_AVAILABLE",
                 "EXPIRED",
                 "UNREACHABLE",
-                "NOT_PROVIDED"
+                "NOT_PROVIDED",
+                "NOT_EVALUATED"
               ]
             },
             "expired_references": {
@@ -175,7 +176,8 @@
                 "STATIC_PASS_WITH_LIMITATIONS",
                 "SELF_REPORT_ONLY",
                 "REVIEW_FAILED",
-                "UNREVIEWED"
+                "UNREVIEWED",
+                "NOT_EVALUATED"
               ]
             },
             "tier": {
@@ -183,7 +185,7 @@
               "enum": ["NONE", "SELF_CLAIM", "STATIC_AUDIT", "INDEPENDENT_FULL"]
             },
             "scope": { "type": "string" },
-            "reviewer_identity": { "type": "string" }
+            "reviewer_identity": { "type": ["string", "null"] }
           }
         },
         "authorization": {
@@ -201,7 +203,7 @@
               ]
             },
             "decision_by": { "type": ["string", "null"] },
-            "authorization_scope": { "type": "string" }
+            "authorization_scope": { "type": ["string", "null"] }
           }
         },
         "freshness": {
@@ -215,7 +217,8 @@
                 "CURRENT_HEAD",
                 "HISTORICAL_BASELINE",
                 "STALE_DIVERGED",
-                "UNKNOWN_HEAD"
+                "UNKNOWN_HEAD",
+                "NOT_EVALUATED"
               ]
             },
             "live_head_sha": { "type": ["string", "null"] }
@@ -263,9 +266,9 @@
           "additionalProperties": false,
           "required": ["claimed_phase", "claimed_producer"],
           "properties": {
-            "claimed_phase": { "type": "string" },
-            "claimed_producer": { "type": "string" },
-            "claimed_checkpoint_id": { "type": "string" }
+            "claimed_phase": { "type": ["string", "null"] },
+            "claimed_producer": { "type": ["string", "null"] },
+            "claimed_checkpoint_id": { "type": ["string", "null"] }
           }
         },
         "machine_assessed": {
@@ -285,8 +288,8 @@
           "required": ["review_verdict"],
           "properties": {
             "review_verdict": { "type": "string" },
-            "reviewer": { "type": "string" },
-            "audit_scope": { "type": "string" }
+            "reviewer": { "type": ["string", "null"] },
+            "audit_scope": { "type": ["string", "null"] }
           }
         },
         "human_authorized": {
