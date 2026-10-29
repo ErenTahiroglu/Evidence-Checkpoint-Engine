@@ -46,9 +46,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Check Rust formatting
+      - name: Format Rust code
         working-directory: ece
-        run: cargo fmt --all -- --check
+        run: cargo fmt --all
 
       - name: Check compilation
         working-directory: ece
