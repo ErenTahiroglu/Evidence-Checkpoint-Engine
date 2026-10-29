@@ -92,19 +92,17 @@ jobs:
           mkdir -p incompatible_schemas
           cp ../docs/gov-00/schemas/checkpoint-input.schema.json incompatible_schemas/
           cp ../docs/gov-00/schemas/checkpoint-envelope.schema.json incompatible_schemas/
-          cat << 'EOF' > incompatible_schemas/assessment-output.schema.json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
-  "type": "object",
-  "required": ["mandatory_field_engine_will_never_emit"],
-  "properties": {
-    "mandatory_field_engine_will_never_emit": {
-      "type": "string"
-    }
-  }
-}
-EOF
+          printf '%s\n' '{' \
+            '  "$schema": "https://json-schema.org/draft/2020-12/schema",' \
+            '  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",' \
+            '  "type": "object",' \
+            '  "required": ["mandatory_field_engine_will_never_emit"],' \
+            '  "properties": {' \
+            '    "mandatory_field_engine_will_never_emit": {' \
+            '      "type": "string"' \
+            '    }' \
+            '  }' \
+            '}' > incompatible_schemas/assessment-output.schema.json
 
           ./target/release/ece verify-envelope \
             --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
@@ -151,19 +149,17 @@ EOF
           mkdir -p incompatible_schemas
           cp ../docs/gov-00/schemas/checkpoint-input.schema.json incompatible_schemas/
           cp ../docs/gov-00/schemas/checkpoint-envelope.schema.json incompatible_schemas/
-          cat << 'EOF' > incompatible_schemas/assessment-output.schema.json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
-  "type": "object",
-  "required": ["mandatory_field_engine_will_never_emit"],
-  "properties": {
-    "mandatory_field_engine_will_never_emit": {
-      "type": "string"
-    }
-  }
-}
-EOF
+          printf '%s\n' '{' \
+            '  "$schema": "https://json-schema.org/draft/2020-12/schema",' \
+            '  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",' \
+            '  "type": "object",' \
+            '  "required": ["mandatory_field_engine_will_never_emit"],' \
+            '  "properties": {' \
+            '    "mandatory_field_engine_will_never_emit": {' \
+            '      "type": "string"' \
+            '    }' \
+            '  }' \
+            '}' > incompatible_schemas/assessment-output.schema.json
 
           ./target/release/ece.exe verify-envelope \
             --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
