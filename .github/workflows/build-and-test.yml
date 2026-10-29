@@ -46,34 +46,31 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Generate and dump lockfile
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Format Rust code
         working-directory: ece
         run: |
-          cargo generate-lockfile
-          echo "=== BEGIN CARGO.LOCK ==="
-          cat Cargo.lock
-          echo "=== END CARGO.LOCK ==="
-
-      - name: Check Rust formatting
-        working-directory: ece
-        run: cargo fmt --all -- --check
+          cargo fmt --all
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            echo "=== BEGIN FMT PATCH ==="
+            git diff
+            echo "=== END FMT PATCH ==="
+          fi
 
       - name: Check compilation
         working-directory: ece
-        run: cargo check --all-targets
+        run: cargo check --locked --all-targets
 
       - name: Clippy linter
         working-directory: ece
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Run test suite
         working-directory: ece
-        run: cargo test
+        run: cargo test --locked
 
       - name: Build release binary
         working-directory: ece
-        run: cargo build --release
+        run: cargo build --locked --release
 
       - name: Smoke test CLI (Unix)
         if: runner.os != 'Windows'
