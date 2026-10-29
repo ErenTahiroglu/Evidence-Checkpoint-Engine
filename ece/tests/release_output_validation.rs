@@ -88,8 +88,8 @@ fn fixture_path(name: &str) -> PathBuf {
 #[test]
 fn test_library_verify_envelope_fails_closed_on_incompatible_output_schema() {
     let temp_schemas = TempSchemaDir::new(INCOMPATIBLE_ASSESSMENT_SCHEMA);
-    let envelope_bytes = fs::read(fixture_path("envelope_valid_bootstrap_checkpoint.json"))
-        .expect("read fixture");
+    let envelope_bytes =
+        fs::read(fixture_path("envelope_valid_bootstrap_checkpoint.json")).expect("read fixture");
 
     let result = verify_envelope(&envelope_bytes, temp_schemas.path());
     match result {
