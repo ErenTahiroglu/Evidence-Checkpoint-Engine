@@ -29,7 +29,7 @@ fn load_fixture(filename: &str) -> Vec<u8> {
 #[test]
 fn test_tampered_envelope_digest_rejected() {
     let bytes = load_fixture("envelope_invalid_tampered_digest.json");
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should produce output");
 
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -71,7 +71,7 @@ fn test_malformed_json_syntax_rejected() {
         other => panic!("expected MalformedJson, got {other:?}"),
     }
 
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should produce output");
     assert_eq!(output.exit_code, 3);
     assert_eq!(
         output

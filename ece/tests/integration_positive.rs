@@ -38,7 +38,7 @@ fn test_valid_bootstrap_payload_structural_acceptance() {
 #[test]
 fn test_valid_bootstrap_envelope_content_consistency() {
     let bytes = load_fixture("envelope_valid_bootstrap_checkpoint.json");
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should succeed");
 
     assert_eq!(output.exit_code, 1);
     assert_eq!(
@@ -193,7 +193,7 @@ fn test_valid_completed_and_queued_jobs_schema() {
 #[test]
 fn test_inspect_untrusted_payload_diagnostics_only() {
     let bytes = load_fixture("input_valid_bootstrap_checkpoint.json");
-    let output = inspect_payload(&bytes, &schema_dir());
+    let output = inspect_payload(&bytes, &schema_dir()).expect("inspect should succeed");
 
     assert_eq!(output.exit_code, 3);
     assert_eq!(
@@ -272,7 +272,7 @@ fn test_rfc8785_ecmascript_number_vectors() {
 fn test_emitted_assessment_valid_envelope_exit_1_conforms_to_schema() {
     let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
     let bytes = load_fixture("envelope_valid_bootstrap_checkpoint.json");
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should succeed");
 
     assert_eq!(output.exit_code, 1);
     store
@@ -284,7 +284,7 @@ fn test_emitted_assessment_valid_envelope_exit_1_conforms_to_schema() {
 fn test_emitted_assessment_digest_mismatch_exit_2_conforms_to_schema() {
     let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
     let bytes = load_fixture("envelope_invalid_tampered_digest.json");
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should succeed");
 
     assert_eq!(output.exit_code, 2);
     store
@@ -296,7 +296,7 @@ fn test_emitted_assessment_digest_mismatch_exit_2_conforms_to_schema() {
 fn test_emitted_assessment_refused_syntax_error_exit_3_conforms_to_schema() {
     let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
     let bytes = load_fixture("input_malformed_syntax.txt");
-    let output = verify_envelope(&bytes, &schema_dir());
+    let output = verify_envelope(&bytes, &schema_dir()).expect("verification should succeed");
 
     assert_eq!(output.exit_code, 3);
     assert_eq!(
@@ -320,7 +320,7 @@ fn test_emitted_assessment_refused_syntax_error_exit_3_conforms_to_schema() {
 fn test_emitted_assessment_inspect_untrusted_exit_3_conforms_to_schema() {
     let store = SchemaStore::load(&schema_dir()).expect("schemas should load");
     let bytes = load_fixture("input_valid_bootstrap_checkpoint.json");
-    let output = inspect_payload(&bytes, &schema_dir());
+    let output = inspect_payload(&bytes, &schema_dir()).expect("inspect should succeed");
 
     assert_eq!(output.exit_code, 3);
     store.validate_assessment(&output.assessment).expect(

@@ -20,15 +20,14 @@ pub struct VerificationOutput {
     pub exit_code: i32,
 }
 
-/// Helper to validate emitted assessment against assessment-output.schema.json.
-/// In debug mode (including tests), panics on schema violation to fail immediately.
-/// In release mode, logs error to stderr.
-fn validate_emitted_assessment(store: &SchemaStore, output: &VerificationOutput) {
-    if let Err(e) = store.validate_assessment(&output.assessment) {
-        eprintln!("ECE_ASSESSMENT_SCHEMA_VIOLATION: {e}");
-        #[cfg(debug_assertions)]
-        panic!("Emitted assessment violates assessment-output.schema.json: {e}");
-    }
+/// Validate an assessment against assessment-output.schema.json, returning
+/// `Ok(output)` if valid, or `Err(VerifierError::OutputSchemaViolation)` fail-closed.
+fn validate_and_wrap(
+    store: &SchemaStore,
+    output: VerificationOutput,
+) -> Result<VerificationOutput, VerifierError> {
+    store.validate_assessment(&output.assessment)?;
+    Ok(output)
 }
 
 /// Extract an optional string property by JSON pointer.
@@ -629,20 +628,19 @@ pub fn build_assessment_inspect_untrusted(
 /// 4. Semantic checks on the inner payload
 /// 5. Build six-dimensional assessment
 /// 6. Validate assessment against assessment-output.schema.json
-pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOutput {
-    // Load schemas (may fail if schema dir missing — operational error, exit 4)
-    let store = match SchemaStore::load(schema_dir) {
-        Ok(s) => s,
-        Err(e) => return build_assessment_refused(&e, None),
-    };
+pub fn verify_envelope(
+    input_bytes: &[u8],
+    schema_dir: &Path,
+) -> Result<VerificationOutput, VerifierError> {
+    // Load schemas (fails safely if schema dir missing or invalid — operational error, exit 4)
+    let store = SchemaStore::load(schema_dir)?;
 
     // 1. Bounded parse
     let envelope = match crate::verifier::parser::parse_bounded_json(input_bytes) {
         Ok(v) => v,
         Err(e) => {
             let out = build_assessment_refused(&e, None);
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
     };
 
@@ -650,8 +648,7 @@ pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
     if let Err(e) = store.validate_envelope(&envelope) {
         let payload = envelope.get("payload");
         let out = build_assessment_refused(&e, payload);
-        validate_emitted_assessment(&store, &out);
-        return out;
+        return validate_and_wrap(&store, out);
     }
 
     // Extract payload for downstream steps
@@ -664,8 +661,7 @@ pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
                 ),
                 None,
             );
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
     };
 
@@ -674,13 +670,11 @@ pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
         Ok(d) => d,
         Err(VerifierError::DigestMismatch { expected, computed }) => {
             let out = build_assessment_digest_fail(&payload, &expected, &computed);
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
         Err(e) => {
             let out = build_assessment_refused(&e, Some(&payload));
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
     };
 
@@ -689,34 +683,31 @@ pub fn verify_envelope(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
         Ok(s) => s,
         Err(e) => {
             let out = build_assessment_refused(&e, Some(&payload));
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
     };
 
     // 5. Build limitations assessment (best achievable offline)
     let out = build_assessment_limitations(&payload, &digest, &semantic);
-    validate_emitted_assessment(&store, &out);
-    out
+    validate_and_wrap(&store, out)
 }
 
 /// Run the `inspect-untrusted-payload` pipeline (diagnostic only).
 ///
 /// Always exits 3. Emits prominent UNTRUSTED warnings.
-pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOutput {
+pub fn inspect_payload(
+    input_bytes: &[u8],
+    schema_dir: &Path,
+) -> Result<VerificationOutput, VerifierError> {
     // Load schemas
-    let store = match SchemaStore::load(schema_dir) {
-        Ok(s) => s,
-        Err(e) => return build_assessment_refused(&e, None),
-    };
+    let store = SchemaStore::load(schema_dir)?;
 
     // Bounded parse
     let payload = match crate::verifier::parser::parse_bounded_json(input_bytes) {
         Ok(v) => v,
         Err(e) => {
             let out = build_assessment_refused(&e, None);
-            validate_emitted_assessment(&store, &out);
-            return out;
+            return validate_and_wrap(&store, out);
         }
     };
 
@@ -731,6 +722,5 @@ pub fn inspect_payload(input_bytes: &[u8], schema_dir: &Path) -> VerificationOut
 
     let out =
         build_assessment_inspect_untrusted(&payload, schema_error.as_deref(), semantic.as_ref());
-    validate_emitted_assessment(&store, &out);
-    out
+    validate_and_wrap(&store, out)
 }

@@ -132,10 +132,16 @@ fn main() {
         }
     };
 
-    let output: VerificationOutput = if is_verify {
+    let output: VerificationOutput = match if is_verify {
         verify_envelope(&input_bytes, &schema_dir)
     } else {
         inspect_payload(&input_bytes, &schema_dir)
+    } {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", e.class(), e);
+            std::process::exit(e.exit_code());
+        }
     };
 
     // Emit structured assessment JSON to stdout

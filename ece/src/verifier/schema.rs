@@ -125,7 +125,17 @@ impl SchemaStore {
 
     /// Validate an assessment output document against `assessment-output.schema.json`.
     pub fn validate_assessment(&self, assessment: &Value) -> Result<(), VerifierError> {
-        collect_errors(&self.assessment_validator, assessment)
+        let errors: Vec<String> = self
+            .assessment_validator
+            .iter_errors(assessment)
+            .map(|e| format!("{} [path: {}]", e, e.instance_path))
+            .collect();
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(VerifierError::OutputSchemaViolation { details: errors })
+        }
     }
 }
 

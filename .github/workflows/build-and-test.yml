@@ -89,6 +89,41 @@ jobs:
             exit 1
           fi
 
+          mkdir -p incompatible_schemas
+          cp ../docs/gov-00/schemas/checkpoint-input.schema.json incompatible_schemas/
+          cp ../docs/gov-00/schemas/checkpoint-envelope.schema.json incompatible_schemas/
+          cat << 'EOF' > incompatible_schemas/assessment-output.schema.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
+  "type": "object",
+  "required": ["mandatory_field_engine_will_never_emit"],
+  "properties": {
+    "mandatory_field_engine_will_never_emit": {
+      "type": "string"
+    }
+  }
+}
+EOF
+
+          ./target/release/ece verify-envelope \
+            --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
+            --schema-dir incompatible_schemas > out_incomp.txt 2> err_incomp.txt
+          rc=$?
+          if [ $rc -ne 4 ]; then
+            echo "Expected exit code 4 for incompatible assessment schema, got $rc"
+            exit 1
+          fi
+          if [ -s out_incomp.txt ]; then
+            echo "Expected empty stdout on output schema violation"
+            exit 1
+          fi
+          if ! grep -q "OUTPUT_SCHEMA_VIOLATION" err_incomp.txt; then
+            echo "Expected OUTPUT_SCHEMA_VIOLATION in stderr"
+            exit 1
+          fi
+          rm -rf incompatible_schemas out_incomp.txt err_incomp.txt
+
       - name: Smoke test CLI (Windows)
         if: runner.os == 'Windows'
         working-directory: ece
@@ -112,3 +147,38 @@ jobs:
             echo "Expected exit code 3 for inspect-untrusted-payload, got $rc"
             exit 1
           fi
+
+          mkdir -p incompatible_schemas
+          cp ../docs/gov-00/schemas/checkpoint-input.schema.json incompatible_schemas/
+          cp ../docs/gov-00/schemas/checkpoint-envelope.schema.json incompatible_schemas/
+          cat << 'EOF' > incompatible_schemas/assessment-output.schema.json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine/schemas/v0.1.0/assessment-output.schema.json",
+  "type": "object",
+  "required": ["mandatory_field_engine_will_never_emit"],
+  "properties": {
+    "mandatory_field_engine_will_never_emit": {
+      "type": "string"
+    }
+  }
+}
+EOF
+
+          ./target/release/ece.exe verify-envelope \
+            --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
+            --schema-dir incompatible_schemas > out_incomp.txt 2> err_incomp.txt
+          rc=$?
+          if [ $rc -ne 4 ]; then
+            echo "Expected exit code 4 for incompatible assessment schema, got $rc"
+            exit 1
+          fi
+          if [ -s out_incomp.txt ]; then
+            echo "Expected empty stdout on output schema violation"
+            exit 1
+          fi
+          if ! grep -q "OUTPUT_SCHEMA_VIOLATION" err_incomp.txt; then
+            echo "Expected OUTPUT_SCHEMA_VIOLATION in stderr"
+            exit 1
+          fi
+          rm -rf incompatible_schemas out_incomp.txt err_incomp.txt

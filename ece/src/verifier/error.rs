@@ -62,6 +62,9 @@ pub enum VerifierError {
     #[error("Schema file I/O error: {0}")]
     SchemaIo(String),
 
+    #[error("Output assessment schema validation failed: {}", details.join("; "))]
+    OutputSchemaViolation { details: Vec<String> },
+
     #[error("Internal error: {0}")]
     InternalError(String),
 }
@@ -74,7 +77,9 @@ impl VerifierError {
     pub fn exit_code(&self) -> i32 {
         match self {
             VerifierError::DigestMismatch { .. } => 2,
-            VerifierError::InternalError(_) | VerifierError::SchemaIo(_) => 4,
+            VerifierError::InternalError(_)
+            | VerifierError::SchemaIo(_)
+            | VerifierError::OutputSchemaViolation { .. } => 4,
             _ => 3,
         }
     }
@@ -91,6 +96,7 @@ impl VerifierError {
             VerifierError::DigestMismatch { .. } => "DIGEST_MISMATCH",
             VerifierError::SemanticError { .. } => "SEMANTIC_ERROR",
             VerifierError::SchemaIo(_) => "SCHEMA_IO_ERROR",
+            VerifierError::OutputSchemaViolation { .. } => "OUTPUT_SCHEMA_VIOLATION",
             VerifierError::InternalError(_) => "INTERNAL_ERROR",
         }
     }
