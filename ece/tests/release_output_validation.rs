@@ -93,13 +93,14 @@ fn test_library_verify_envelope_fails_closed_on_incompatible_output_schema() {
 
     let result = verify_envelope(&envelope_bytes, temp_schemas.path());
     match result {
-        Err(VerifierError::OutputSchemaViolation { details }) => {
+        Err(ref err @ VerifierError::OutputSchemaViolation { ref details }) => {
             assert!(!details.is_empty(), "expected schema violation details");
             assert_eq!(
-                result.unwrap_err().exit_code(),
+                err.exit_code(),
                 4,
                 "output schema violation must yield exit code 4"
             );
+            assert_eq!(err.class(), "OUTPUT_SCHEMA_VIOLATION");
         }
         Ok(_) => panic!("verify_envelope must not succeed with incompatible assessment schema"),
         Err(other) => panic!("expected OutputSchemaViolation, got: {other:?}"),
@@ -114,13 +115,14 @@ fn test_library_inspect_payload_fails_closed_on_incompatible_output_schema() {
 
     let result = inspect_payload(&payload_bytes, temp_schemas.path());
     match result {
-        Err(VerifierError::OutputSchemaViolation { details }) => {
+        Err(ref err @ VerifierError::OutputSchemaViolation { ref details }) => {
             assert!(!details.is_empty(), "expected schema violation details");
             assert_eq!(
-                result.unwrap_err().exit_code(),
+                err.exit_code(),
                 4,
                 "output schema violation must yield exit code 4"
             );
+            assert_eq!(err.class(), "OUTPUT_SCHEMA_VIOLATION");
         }
         Ok(_) => panic!("inspect_payload must not succeed with incompatible assessment schema"),
         Err(other) => panic!("expected OutputSchemaViolation, got: {other:?}"),

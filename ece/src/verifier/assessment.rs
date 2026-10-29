@@ -15,6 +15,7 @@ use std::path::Path;
 use uuid::Uuid;
 
 /// Output of the full verification pipeline.
+#[derive(Debug)]
 pub struct VerificationOutput {
     pub assessment: Value,
     pub exit_code: i32,
