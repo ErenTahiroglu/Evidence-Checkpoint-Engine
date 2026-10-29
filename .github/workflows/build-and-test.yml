@@ -92,20 +92,23 @@ jobs:
       - name: Smoke test CLI (Windows)
         if: runner.os == 'Windows'
         working-directory: ece
+        shell: bash
         run: |
-          .\target\release\ece.exe verify-envelope `
-            --input ..\docs\gov-00\fixtures\envelope_valid_bootstrap_checkpoint.json `
-            --schema-dir ..\docs\gov-00\schemas
-          if ($LASTEXITCODE -ne 1) {
-            Write-Error "Expected exit code 1 for verify-envelope, got $LASTEXITCODE"
+          set +e
+          ./target/release/ece.exe verify-envelope \
+            --input ../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json \
+            --schema-dir ../docs/gov-00/schemas
+          rc=$?
+          if [ $rc -ne 1 ]; then
+            echo "Expected exit code 1 for verify-envelope, got $rc"
             exit 1
-          }
+          fi
 
-          .\target\release\ece.exe inspect-untrusted-payload `
-            --input ..\docs\gov-00\fixtures\input_valid_bootstrap_checkpoint.json `
-            --schema-dir ..\docs\gov-00\schemas
-          if ($LASTEXITCODE -ne 3) {
-            Write-Error "Expected exit code 3 for inspect-untrusted-payload, got $LASTEXITCODE"
+          ./target/release/ece.exe inspect-untrusted-payload \
+            --input ../docs/gov-00/fixtures/input_valid_bootstrap_checkpoint.json \
+            --schema-dir ../docs/gov-00/schemas
+          rc=$?
+          if [ $rc -ne 3 ]; then
+            echo "Expected exit code 3 for inspect-untrusted-payload, got $rc"
             exit 1
-          }
-        shell: pwsh
+          fi
