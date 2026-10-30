@@ -1177,11 +1177,15 @@ fn test_28_policy_duplicate_required_jobs_rejected() {
 
     let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
-    assert_eq!(output.exit_code, 2);
-    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+    assert_eq!(output.exit_code, 3);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "INSUFFICIENT_EVIDENCE"
+    );
+    let warnings = output.assessment["derived_summary"]["warnings"]
         .as_array()
         .unwrap();
-    assert!(reasons.iter().any(|r| r
+    assert!(warnings.iter().any(|r| r
         .as_str()
         .unwrap()
         .contains("Trusted check policy contains duplicate required job")));

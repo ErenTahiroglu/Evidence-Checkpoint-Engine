@@ -345,7 +345,7 @@ pub fn evaluate_github_evidence(
         }
         PolicyStatus::UntrustedPolicy => {
             ci_status = "UNVERIFIED_RUN";
-            blocking_reasons.push(format!(
+            warnings.push(format!(
                 "Trusted check policy is invalid or untrusted: {:?}",
                 eval.details
             ));
