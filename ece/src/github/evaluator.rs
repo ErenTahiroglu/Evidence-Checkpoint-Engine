@@ -264,8 +264,7 @@ pub fn evaluate_github_evidence(
         }
         PolicyStatus::UntrustedPolicy => {
             ci_status = "UNVERIFIED_RUN";
-            warnings
-                .push("Trusted policy has zero required jobs; CI unverified".to_string());
+            warnings.push("Trusted policy has zero required jobs; CI unverified".to_string());
         }
     }
 
