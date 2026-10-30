@@ -403,7 +403,7 @@ jobs:
       policy_selection: "ece-pilot-four-runner-matrix"
       gate_mode: "observation"
     secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+      evidence_token: ${{ secrets.GITHUB_TOKEN }}
 
   verify-reusable-pilot:
     needs: [build-and-test, test-reusable-observation-pilot]

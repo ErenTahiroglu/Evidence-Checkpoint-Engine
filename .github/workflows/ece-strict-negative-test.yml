@@ -22,4 +22,4 @@ jobs:
       policy_selection: "ece-pilot-four-runner-matrix"
       gate_mode: "strict"
     secrets:
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+      evidence_token: ${{ secrets.GITHUB_TOKEN }}

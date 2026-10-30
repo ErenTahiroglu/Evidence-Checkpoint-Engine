@@ -54,8 +54,8 @@ on:
         type: string
         default: "ErenTahiroglu/Evidence-Checkpoint-Engine"
     secrets:
-      github_token:
-        description: "GitHub token for read-only evidence API access"
+      evidence_token:
+        description: "Optional GitHub token for evidence API access (defaults to github.token)"
         required: false
     outputs:
       verdict:
@@ -220,7 +220,7 @@ jobs:
           TARGET_COMMIT_SHA: ${{ inputs.target_commit_sha }}
           TARGET_RUN_ID: ${{ inputs.target_run_id }}
           TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
-          PASSED_TOKEN: ${{ secrets.github_token }}
+          PASSED_TOKEN: ${{ secrets.evidence_token }}
         run: |
           set +e
           if [ -n "$PASSED_TOKEN" ]; then
