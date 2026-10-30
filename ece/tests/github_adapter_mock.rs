@@ -1223,9 +1223,10 @@ fn test_29_missing_workflow_path_when_policy_requires() {
     let reasons = output.assessment["derived_summary"]["blocking_reasons"]
         .as_array()
         .unwrap();
-    assert!(reasons
-        .iter()
-        .any(|r| r.as_str().unwrap().contains("Policy target workflow missing")));
+    assert!(reasons.iter().any(|r| r
+        .as_str()
+        .unwrap()
+        .contains("Policy target workflow missing")));
 }
 
 #[test]
@@ -1384,9 +1385,8 @@ fn test_34_declared_policy_metadata_unverified() {
     let schema_dir = resolve_schema_dir();
     let mut target = pilot_target();
     target.declared_policy_ref = Some("arbitrary-policy.json".to_string());
-    target.declared_policy_digest = Some(
-        "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-    );
+    target.declared_policy_digest =
+        Some("0000000000000000000000000000000000000000000000000000000000000000".to_string());
     let policy = TrustedCheckPolicy::ece_pilot_policy();
 
     let mut provider = MockGitHubProvider::new();
@@ -1408,9 +1408,10 @@ fn test_34_declared_policy_metadata_unverified() {
     let warnings = output.assessment["derived_summary"]["warnings"]
         .as_array()
         .unwrap();
-    assert!(warnings
-        .iter()
-        .any(|w| w.as_str().unwrap().contains("POLICY_REFERENCE_NOT_EVALUATED")));
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .contains("POLICY_REFERENCE_NOT_EVALUATED")));
     let omitted = output.assessment["checks_omitted"].as_array().unwrap();
     assert!(omitted.iter().any(|o| o
         .as_str()
