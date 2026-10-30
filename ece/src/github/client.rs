@@ -27,7 +27,7 @@ pub enum GitHubClientError {
     #[error("GitHub resource not found: {resource}")]
     NotFound { resource: String },
 
-    #[error("GitHub API unauthorized or forbidden: {message}")]
+    #[error("GitHub API unauthorized or forbidden: {0}")]
     Unauthorized(String),
 
     #[error("GitHub API HTTP error (status {status}): {message}")]

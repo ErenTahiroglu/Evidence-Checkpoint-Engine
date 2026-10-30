@@ -47,7 +47,7 @@ pub fn evaluate_github_evidence(
     let assessment_id = format!("ece-eval-{}", Uuid::new_v4());
 
     let mut checks_performed = Vec::new();
-    let mut checks_omitted = vec![
+    let checks_omitted = vec![
         "Independent human authorization (out of scope for CI adapter)".to_string(),
         "Physical device execution (hosted CI runners only, not bare-metal hardware)".to_string(),
         "Cryptographic GPG commit signature verification (commit is unsigned)".to_string(),
@@ -58,10 +58,8 @@ pub fn evaluate_github_evidence(
     let mut sha_verified = false;
     let mut repo_id_matched = false;
     let mut ci_status = "UNVERIFIED_RUN";
-    let mut expected_jobs_count = policy.required_jobs.len();
-    let mut observed_jobs_count = 0;
+    let expected_jobs_count = policy.required_jobs.len();
     let mut unresolved_jobs = Vec::new();
-    let mut evidence_availability_status = "NOT_EVALUATED";
     let mut expired_references = Vec::new();
 
     // 1. Fetch Repository Identity
@@ -200,64 +198,8 @@ pub fn evaluate_github_evidence(
         target.run_id,
         target.run_attempt,
     );
-    match jobs_res {
-        Ok(jobs) => {
-            observed_jobs_count = jobs.len();
-            let eval = policy.evaluate_jobs(&jobs);
-
-            match eval.status {
-                PolicyStatus::VerifiedPass => {
-                    if blocking_reasons.is_empty() {
-                        ci_status = "VERIFIED_PASS";
-                    }
-                }
-                PolicyStatus::MissingJobs => {
-                    ci_status = "FAILED";
-                    unresolved_jobs = eval.missing_jobs.clone();
-                    blocking_reasons.push(format!(
-                        "Required CI jobs missing from run attempt: {:?}",
-                        eval.missing_jobs
-                    ));
-                }
-                PolicyStatus::Failed => {
-                    ci_status = "FAILED";
-                    unresolved_jobs = eval.failed_jobs.clone();
-                    blocking_reasons.push(format!(
-                        "Required CI jobs failed in run attempt: {:?}",
-                        eval.failed_jobs
-                    ));
-                }
-                PolicyStatus::IncompleteSkipped => {
-                    ci_status = "INCOMPLETE_SKIPPED";
-                    unresolved_jobs = eval.skipped_or_cancelled_jobs.clone();
-                    blocking_reasons.push(format!(
-                        "Required CI jobs skipped or cancelled in run attempt: {:?}",
-                        eval.skipped_or_cancelled_jobs
-                    ));
-                }
-                PolicyStatus::InProgress => {
-                    ci_status = "UNVERIFIED_RUN";
-                    unresolved_jobs = eval.in_progress_jobs.clone();
-                    blocking_reasons.push(format!(
-                        "Required CI jobs still in progress: {:?}",
-                        eval.in_progress_jobs
-                    ));
-                }
-                PolicyStatus::AmbiguousDuplicated => {
-                    ci_status = "FAILED";
-                    unresolved_jobs = eval.conflicting_jobs.clone();
-                    blocking_reasons.push(format!(
-                        "Duplicate executions with conflicting conclusions: {:?}",
-                        eval.conflicting_jobs
-                    ));
-                }
-                PolicyStatus::UntrustedPolicy => {
-                    ci_status = "UNVERIFIED_RUN";
-                    warnings
-                        .push("Trusted policy has zero required jobs; CI unverified".to_string());
-                }
-            }
-        }
+    let jobs = match jobs_res {
+        Ok(jobs) => jobs,
         Err(e) => {
             return build_api_failure_assessment(
                 &store,
@@ -270,6 +212,61 @@ pub fn evaluate_github_evidence(
                 checks_omitted,
             );
         }
+    };
+    let observed_jobs_count = jobs.len();
+    let eval = policy.evaluate_jobs(&jobs);
+
+    match eval.status {
+        PolicyStatus::VerifiedPass => {
+            if blocking_reasons.is_empty() {
+                ci_status = "VERIFIED_PASS";
+            }
+        }
+        PolicyStatus::MissingJobs => {
+            ci_status = "FAILED";
+            unresolved_jobs = eval.missing_jobs.clone();
+            blocking_reasons.push(format!(
+                "Required CI jobs missing from run attempt: {:?}",
+                eval.missing_jobs
+            ));
+        }
+        PolicyStatus::Failed => {
+            ci_status = "FAILED";
+            unresolved_jobs = eval.failed_jobs.clone();
+            blocking_reasons.push(format!(
+                "Required CI jobs failed in run attempt: {:?}",
+                eval.failed_jobs
+            ));
+        }
+        PolicyStatus::IncompleteSkipped => {
+            ci_status = "INCOMPLETE_SKIPPED";
+            unresolved_jobs = eval.skipped_or_cancelled_jobs.clone();
+            blocking_reasons.push(format!(
+                "Required CI jobs skipped or cancelled in run attempt: {:?}",
+                eval.skipped_or_cancelled_jobs
+            ));
+        }
+        PolicyStatus::InProgress => {
+            ci_status = "UNVERIFIED_RUN";
+            unresolved_jobs = eval.in_progress_jobs.clone();
+            blocking_reasons.push(format!(
+                "Required CI jobs still in progress: {:?}",
+                eval.in_progress_jobs
+            ));
+        }
+        PolicyStatus::AmbiguousDuplicated => {
+            ci_status = "FAILED";
+            unresolved_jobs = eval.conflicting_jobs.clone();
+            blocking_reasons.push(format!(
+                "Duplicate executions with conflicting conclusions: {:?}",
+                eval.conflicting_jobs
+            ));
+        }
+        PolicyStatus::UntrustedPolicy => {
+            ci_status = "UNVERIFIED_RUN";
+            warnings
+                .push("Trusted policy has zero required jobs; CI unverified".to_string());
+        }
     }
 
     // 6. Artifact Verification
@@ -277,8 +274,8 @@ pub fn evaluate_github_evidence(
     let artifacts_res = provider.get_artifacts(&target.owner, &target.repo, target.run_id);
     let observed_artifacts = artifacts_res.unwrap_or_default();
 
-    if target.declared_artifacts.is_empty() {
-        evidence_availability_status = "NOT_PROVIDED";
+    let evidence_availability_status = if target.declared_artifacts.is_empty() {
+        "NOT_PROVIDED"
     } else {
         let mut all_found = true;
         let mut any_found = false;
@@ -339,7 +336,7 @@ pub fn evaluate_github_evidence(
             }
         }
 
-        evidence_availability_status = if !expired_references.is_empty() {
+        if !expired_references.is_empty() {
             "EXPIRED"
         } else if all_found {
             "AVAILABLE"
@@ -347,8 +344,8 @@ pub fn evaluate_github_evidence(
             "PARTIALLY_AVAILABLE"
         } else {
             "UNREACHABLE"
-        };
-    }
+        }
+    };
 
     // 7. Derive Final Verdict and Exit Code
     let (verdict, exit_code) = if !blocking_reasons.is_empty() {
