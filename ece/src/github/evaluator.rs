@@ -61,10 +61,9 @@ pub fn evaluate_github_evidence(
         "Independent human authorization (out of scope for CI adapter)".to_string(),
         "Physical device execution (hosted CI runners only, not bare-metal hardware)".to_string(),
         "Cryptographic GPG commit signature verification (commit is unsigned)".to_string(),
-        format!(
-            "Source-declared policy reference/digest authentication \
-             (NOT_EVALUATED; evaluated against operator-selected trusted check policy)"
-        ),
+        "Source-declared policy reference/digest authentication \
+         (NOT_EVALUATED; evaluated against operator-selected trusted check policy)"
+            .to_string(),
     ];
     let mut blocking_reasons = Vec::new();
     let mut warnings = Vec::new();
