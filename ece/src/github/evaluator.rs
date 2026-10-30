@@ -454,6 +454,7 @@ pub fn evaluate_github_evidence(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_api_failure_assessment(
     store: &SchemaStore,
     target: &TargetEvidenceRequest,
