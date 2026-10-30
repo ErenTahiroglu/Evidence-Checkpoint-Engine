@@ -1,0 +1,25 @@
+name: ECE Strict Gate Mode Negative Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  test-strict-gate-failure:
+    name: Test Strict Gate Fails Closed on Historical Run
+    uses: ./.github/workflows/ece-verify-reusable.yml
+    with:
+      target_repo_id: "1432704795"
+      target_owner: "ErenTahiroglu"
+      target_repo: "Evidence-Checkpoint-Engine"
+      target_commit_sha: "415990746d5bbd3756f743b4b5a7673b36228567"
+      target_run_id: "40969401836"
+      target_run_attempt: 1
+      target_workflow_path: ".github/workflows/build-and-test.yml"
+      policy_selection: "ece-pilot-four-runner-matrix"
+      gate_mode: "strict"
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}

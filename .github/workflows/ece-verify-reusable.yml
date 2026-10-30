@@ -1,0 +1,413 @@
+name: ECE Verify Reusable
+
+on:
+  workflow_call:
+    inputs:
+      target_repo_id:
+        description: "Expected numeric GitHub REST repository ID (e.g. 1432704795)"
+        required: true
+        type: string
+      target_owner:
+        description: "Target repository owner (e.g. ErenTahiroglu)"
+        required: true
+        type: string
+      target_repo:
+        description: "Target repository name (e.g. Evidence-Checkpoint-Engine)"
+        required: true
+        type: string
+      target_commit_sha:
+        description: "Target full 40-character commit SHA"
+        required: true
+        type: string
+      target_run_id:
+        description: "Target workflow run ID (e.g. 40969401836)"
+        required: true
+        type: string
+      target_run_attempt:
+        description: "Target workflow run attempt number"
+        required: false
+        type: number
+        default: 1
+      target_workflow_path:
+        description: "Expected workflow definition path"
+        required: false
+        type: string
+        default: ".github/workflows/build-and-test.yml"
+      policy_selection:
+        description: "Operator-approved trusted policy (e.g. ece-pilot-four-runner-matrix)"
+        required: false
+        type: string
+        default: "ece-pilot-four-runner-matrix"
+      gate_mode:
+        description: "Verification gate mode: 'observation' (report only) or 'strict' (fail unless exit 0)"
+        required: false
+        type: string
+        default: "strict"
+      verifier_ref:
+        description: "Commit SHA or ref to checkout ECE verifier source from (optional; defaults to caller ref)"
+        required: false
+        type: string
+        default: ""
+      verifier_repo:
+        description: "Repository from which to checkout ECE verifier source"
+        required: false
+        type: string
+        default: "ErenTahiroglu/Evidence-Checkpoint-Engine"
+    secrets:
+      github_token:
+        description: "GitHub token for read-only evidence API access"
+        required: false
+    outputs:
+      verdict:
+        description: "ECE verifier verdict (e.g. ASSESSED_LIMITATIONS, VERIFIED, ASSESSED_FAIL)"
+        value: ${{ jobs.verify.outputs.verdict }}
+      exit_code:
+        description: "ECE verifier numeric exit code (0, 1, 2, 3, 4)"
+        value: ${{ jobs.verify.outputs.exit_code }}
+      ci_status:
+        description: "CI execution status (e.g. VERIFIED_PASS, FAILED, UNVERIFIED_RUN)"
+        value: ${{ jobs.verify.outputs.ci_status }}
+      checkpoint_accepted:
+        description: "Whether checkpoint is genuinely fully verified/accepted (true only for exit code 0)"
+        value: ${{ jobs.verify.outputs.checkpoint_accepted }}
+      verifier_source_sha:
+        description: "Commit SHA of the ECE verifier source used"
+        value: ${{ jobs.verify.outputs.verifier_source_sha }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    outputs:
+      verdict: ${{ steps.parse_and_summarize.outputs.verdict }}
+      exit_code: ${{ steps.parse_and_summarize.outputs.exit_code }}
+      ci_status: ${{ steps.parse_and_summarize.outputs.ci_status }}
+      checkpoint_accepted: ${{ steps.parse_and_summarize.outputs.checkpoint_accepted }}
+      verifier_source_sha: ${{ steps.provenance.outputs.verifier_source_sha }}
+
+    steps:
+      - name: Validate input contract and policy scope
+        env:
+          INPUT_REPO_ID: ${{ inputs.target_repo_id }}
+          INPUT_OWNER: ${{ inputs.target_owner }}
+          INPUT_REPO: ${{ inputs.target_repo }}
+          INPUT_COMMIT_SHA: ${{ inputs.target_commit_sha }}
+          INPUT_RUN_ID: ${{ inputs.target_run_id }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
+          INPUT_POLICY: ${{ inputs.policy_selection }}
+          INPUT_GATE_MODE: ${{ inputs.gate_mode }}
+        run: |
+          set -euo pipefail
+
+          # 1. Validate Gate Mode
+          if [ "$INPUT_GATE_MODE" != "observation" ] && [ "$INPUT_GATE_MODE" != "strict" ]; then
+            echo "::error::Invalid gate_mode '$INPUT_GATE_MODE'. Must be 'observation' or 'strict'."
+            exit 1
+          fi
+
+          # 2. Validate Trusted Policy Selection
+          if [ "$INPUT_POLICY" != "ece-pilot-four-runner-matrix" ]; then
+            echo "::error::Unsupported policy '$INPUT_POLICY'. Supported policy: 'ece-pilot-four-runner-matrix'."
+            exit 1
+          fi
+
+          # 3. Reject Unsupported Repository / Policy Combinations
+          if [ "$INPUT_POLICY" = "ece-pilot-four-runner-matrix" ] && [ "$INPUT_REPO_ID" != "1432704795" ]; then
+            echo "::error::Policy 'ece-pilot-four-runner-matrix' is exclusively scoped to ECE repository ID 1432704795; got '$INPUT_REPO_ID'."
+            exit 1
+          fi
+
+          # 4. Validate Commit SHA format (40 hex chars)
+          if ! [[ "$INPUT_COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid target_commit_sha '$INPUT_COMMIT_SHA'. Must be full 40-character hex SHA."
+            exit 1
+          fi
+
+          # 5. Validate Numeric IDs and Attempts
+          if ! [[ "$INPUT_REPO_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid target_repo_id '$INPUT_REPO_ID'. Must be numeric."
+            exit 1
+          fi
+
+          if ! [[ "$INPUT_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid target_run_id '$INPUT_RUN_ID'. Must be numeric."
+            exit 1
+          fi
+
+          if ! [[ "$INPUT_RUN_ATTEMPT" =~ ^[0-9]+$ ]] || [ "$INPUT_RUN_ATTEMPT" -lt 1 ]; then
+            echo "::error::Invalid target_run_attempt '$INPUT_RUN_ATTEMPT'. Must be a positive integer."
+            exit 1
+          fi
+
+          echo "Input contract and policy scope validated successfully."
+
+      - name: Resolve verifier target
+        id: resolve_target
+        env:
+          INPUT_REPO: ${{ inputs.verifier_repo }}
+          INPUT_REF: ${{ inputs.verifier_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_REF" ]; then
+            TARGET_REF="$INPUT_REF"
+            TARGET_REPO="$INPUT_REPO"
+          elif [ "${{ github.repository }}" = "$INPUT_REPO" ]; then
+            TARGET_REPO="${{ github.repository }}"
+            TARGET_REF="${{ github.ref }}"
+          else
+            TARGET_REPO="$INPUT_REPO"
+            TARGET_REF="development"
+          fi
+          echo "target_repo=$TARGET_REPO" >> "$GITHUB_OUTPUT"
+          echo "target_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
+          echo "Resolved verifier target: repo=$TARGET_REPO ref=$TARGET_REF"
+
+      - name: Checkout ECE verifier source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          repository: ${{ steps.resolve_target.outputs.target_repo }}
+          ref: ${{ steps.resolve_target.outputs.target_ref }}
+          path: ece-verifier
+
+      - name: Record and bind verifier provenance
+        id: provenance
+        run: |
+          set -euo pipefail
+          VERIFIER_SHA=$(git -C ece-verifier rev-parse HEAD)
+          echo "verifier_source_sha=$VERIFIER_SHA" >> "$GITHUB_OUTPUT"
+          echo "================================================================"
+          echo "ECE Verifier Provenance:"
+          echo "  Caller Repository: ${{ github.repository }}"
+          echo "  Caller Ref:        ${{ github.ref }}"
+          echo "  Caller SHA:        ${{ github.sha }}"
+          echo "  Verifier Repo:     ${{ inputs.verifier_repo }}"
+          echo "  Verifier Source:   $VERIFIER_SHA"
+          echo "  Target Repo ID:    ${{ inputs.target_repo_id }}"
+          echo "  Target Repo:       ${{ inputs.target_owner }}/${{ inputs.target_repo }}"
+          echo "  Target Commit:     ${{ inputs.target_commit_sha }}"
+          echo "  Target Run ID:     ${{ inputs.target_run_id }}"
+          echo "  Target Run Attempt:${{ inputs.target_run_attempt }}"
+          echo "  Gate Mode:         ${{ inputs.gate_mode }}"
+          echo "================================================================"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-reusable-${{ hashFiles('ece-verifier/ece/Cargo.lock', 'ece-verifier/ece/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-reusable-
+
+      - name: Build ECE verifier binary
+        working-directory: ece-verifier/ece
+        run: cargo build --locked --release
+
+      - name: Execute ECE verifier against target GitHub evidence
+        id: run_verifier
+        env:
+          TARGET_OWNER: ${{ inputs.target_owner }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_REPO_ID: ${{ inputs.target_repo_id }}
+          TARGET_COMMIT_SHA: ${{ inputs.target_commit_sha }}
+          TARGET_RUN_ID: ${{ inputs.target_run_id }}
+          TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
+          PASSED_TOKEN: ${{ secrets.github_token }}
+        run: |
+          set +e
+          if [ -n "$PASSED_TOKEN" ]; then
+            export GITHUB_TOKEN="$PASSED_TOKEN"
+          elif [ -n "${{ github.token }}" ]; then
+            export GITHUB_TOKEN="${{ github.token }}"
+          fi
+
+          mkdir -p verifier_output
+          ./ece-verifier/ece/target/release/ece assess-github-run \
+            --owner "$TARGET_OWNER" \
+            --repo "$TARGET_REPO" \
+            --expected-repo-id "$TARGET_REPO_ID" \
+            --commit-sha "$TARGET_COMMIT_SHA" \
+            --run-id "$TARGET_RUN_ID" \
+            --run-attempt "$TARGET_RUN_ATTEMPT" \
+            --schema-dir ece-verifier/docs/gov-00/schemas > verifier_output/assessment.json 2> verifier_output/ece_stderr.log
+          CLI_RC=$?
+          set -e
+
+          echo "CLI exited with code: $CLI_RC"
+          echo "CLI_RC=$CLI_RC" >> "$GITHUB_ENV"
+
+      - name: Parse output and generate structured six-dimensional summary
+        id: parse_and_summarize
+        env:
+          CLI_RC: ${{ env.CLI_RC }}
+          GATE_MODE: ${{ inputs.gate_mode }}
+          TARGET_REPO_ID: ${{ inputs.target_repo_id }}
+          TARGET_OWNER: ${{ inputs.target_owner }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_COMMIT_SHA: ${{ inputs.target_commit_sha }}
+          TARGET_RUN_ID: ${{ inputs.target_run_id }}
+          TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
+          POLICY_SELECTION: ${{ inputs.policy_selection }}
+          ECE_VERIFIER_SHA: ${{ steps.provenance.outputs.verifier_source_sha }}
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import os
+          import sys
+
+          cli_rc_env = os.environ.get("CLI_RC", "4")
+          try:
+              cli_rc = int(cli_rc_env)
+          except ValueError:
+              cli_rc = 4
+
+          gate_mode = os.environ.get("GATE_MODE", "strict")
+          target_repo_id = os.environ.get("TARGET_REPO_ID", "")
+          target_owner = os.environ.get("TARGET_OWNER", "")
+          target_repo = os.environ.get("TARGET_REPO", "")
+          target_commit = os.environ.get("TARGET_COMMIT_SHA", "")
+          target_run_id = os.environ.get("TARGET_RUN_ID", "")
+          target_attempt = os.environ.get("TARGET_RUN_ATTEMPT", "1")
+          policy_selection = os.environ.get("POLICY_SELECTION", "")
+          verifier_sha = os.environ.get("ECE_VERIFIER_SHA", "unknown")
+          github_output = os.environ.get("GITHUB_OUTPUT", "")
+          github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY", "")
+
+          assessment_file = "verifier_output/assessment.json"
+          stderr_file = "verifier_output/ece_stderr.log"
+
+          data = {}
+          if os.path.exists(assessment_file) and os.path.getsize(assessment_file) > 0:
+              try:
+                  with open(assessment_file, "r", encoding="utf-8") as f:
+                      data = json.load(f)
+              except Exception as e:
+                  print(f"Warning: Failed to parse assessment JSON: {e}", file=sys.stderr)
+                  data = {}
+
+          derived = data.get("derived_summary", {})
+          verdict = derived.get("verdict", "OPERATIONAL_ERROR" if cli_rc == 4 else "UNKNOWN")
+          reported_exit_code = data.get("exit_code", cli_rc)
+          dimensions = data.get("dimensions", {})
+          ci_exec = dimensions.get("ci_execution", {})
+          ci_status = ci_exec.get("status", "UNVERIFIED_RUN")
+          observed_jobs = ci_exec.get("observed_jobs_count", 0)
+          expected_jobs = ci_exec.get("expected_jobs_count", 0)
+
+          # Checkpoint accepted strictly requires exit code 0 AND verdict == VERIFIED
+          checkpoint_accepted = "true" if (reported_exit_code == 0 and verdict == "VERIFIED") else "false"
+
+          # Write Step Outputs
+          if github_output:
+              with open(github_output, "a", encoding="utf-8") as out:
+                  out.write(f"verdict={verdict}\n")
+                  out.write(f"exit_code={reported_exit_code}\n")
+                  out.write(f"ci_status={ci_status}\n")
+                  out.write(f"checkpoint_accepted={checkpoint_accepted}\n")
+
+          # Write Structured GITHUB_STEP_SUMMARY
+          summary = []
+          summary.append("## Evidence Checkpoint Engine — Verification Summary\n")
+          summary.append("| Parameter | Value |")
+          summary.append("| :--- | :--- |")
+          summary.append(f"| **Gate Mode** | `{gate_mode}` |")
+          summary.append(f"| **Checkpoint Accepted** | `{checkpoint_accepted}` |")
+          summary.append(f"| **Engine Verdict** | **`{verdict}`** (Exit Code `{reported_exit_code}`) |")
+          summary.append(f"| **Target Repository** | `{target_owner}/{target_repo}` (ID: `{target_repo_id}`) |")
+          summary.append(f"| **Target Commit SHA** | `{target_commit}` |")
+          summary.append(f"| **Target Workflow Run** | Run `{target_run_id}` (Attempt `{target_attempt}`) |")
+          summary.append(f"| **Trusted Check Policy** | `{policy_selection}` |")
+          summary.append(f"| **ECE Verifier Source** | `{verifier_sha}` |\n")
+
+          summary.append("### Six-Dimensional Trust Status\n")
+          summary.append("| Dimension | Status | Key Information |")
+          summary.append("| :--- | :--- | :--- |")
+
+          # 1. Evidence Integrity
+          ev_int = dimensions.get("evidence_integrity", {})
+          status_int = ev_int.get("status", "NOT_EVALUATED")
+          details_int = ev_int.get("details", "")
+          summary.append(f"| **Evidence Integrity** | `{status_int}` | {details_int} |")
+
+          # 2. CI Execution
+          summary.append(f"| **CI Execution** | `{ci_status}` | {observed_jobs}/{expected_jobs} policy jobs observed completed with success |")
+
+          # 3. Evidence Availability
+          ev_avail = dimensions.get("evidence_availability", {})
+          status_avail = ev_avail.get("status", "NOT_PROVIDED")
+          summary.append(f"| **Evidence Availability** | `{status_avail}` | Provider artifacts verification |")
+
+          # 4. Independent Review
+          rev = dimensions.get("review_status", {})
+          status_rev = rev.get("status", "UNREVIEWED")
+          tier_rev = rev.get("tier", "NONE")
+          summary.append(f"| **Independent Review** | `{status_rev}` | Tier: `{tier_rev}` |")
+
+          # 5. Human Authorization
+          auth = dimensions.get("authorization", {})
+          status_auth = auth.get("status", "AUTHORIZATION_PENDING")
+          summary.append(f"| **Human Authorization** | `{status_auth}` | Owner decision pending |")
+
+          # 6. Freshness
+          fresh = dimensions.get("freshness", {})
+          status_fresh = fresh.get("status", "HISTORICAL_BASELINE")
+          summary.append(f"| **Freshness** | `{status_fresh}` | Head SHA unpinned |")
+
+          blocking = derived.get("blocking_reasons", [])
+          warnings = derived.get("warnings", [])
+
+          if blocking:
+              summary.append("\n#### Blocking Reasons")
+              for b in blocking:
+                  safe_b = str(b).replace("<", "&lt;").replace(">", "&gt;")
+                  summary.append(f"- ⚠️ {safe_b}")
+
+          if warnings:
+              summary.append("\n#### Warnings & Invariants")
+              for w in warnings:
+                  safe_w = str(w).replace("<", "&lt;").replace(">", "&gt;")
+                  summary.append(f"- ℹ️ {safe_w}")
+
+          if github_step_summary:
+              with open(github_step_summary, "a", encoding="utf-8") as s:
+                  s.write("\n".join(summary) + "\n")
+
+          print("Step outputs and GITHUB_STEP_SUMMARY generated.")
+          PYEOF
+
+      - name: Enforce gate semantics
+        env:
+          GATE_MODE: ${{ inputs.gate_mode }}
+          VERDICT: ${{ steps.parse_and_summarize.outputs.verdict }}
+          EXIT_CODE: ${{ steps.parse_and_summarize.outputs.exit_code }}
+          CHECKPOINT_ACCEPTED: ${{ steps.parse_and_summarize.outputs.checkpoint_accepted }}
+        run: |
+          set -euo pipefail
+
+          echo "Enforcing gate policy: mode='$GATE_MODE', verdict='$VERDICT', exit_code='$EXIT_CODE', accepted='$CHECKPOINT_ACCEPTED'"
+
+          if [ "$GATE_MODE" = "strict" ]; then
+            if [ "$EXIT_CODE" -ne 0 ]; then
+              echo "::error::Strict acceptance gate failed: ECE verifier emitted exit code $EXIT_CODE ($VERDICT). Checkpoint is NOT accepted."
+              exit 1
+            fi
+            echo "Strict acceptance gate satisfied: exit code 0."
+          elif [ "$GATE_MODE" = "observation" ]; then
+            if [ "$EXIT_CODE" -eq 4 ]; then
+              echo "::error::Observation mode failed: operational error in verifier execution (exit code 4)."
+              exit 1
+            fi
+            echo "Observation mode: verification completed with exit code $EXIT_CODE ($VERDICT)."
+            echo "Checkpoint acceptance status: $CHECKPOINT_ACCEPTED."
+          else
+            echo "::error::Unrecognized gate_mode '$GATE_MODE'."
+            exit 1
+          fi

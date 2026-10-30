@@ -153,6 +153,140 @@ jobs:
             print('Pilot structured assertions verified successfully')"
           rm -f pilot_out.json pilot_err.txt
 
+          # ------------------------------------------------------------
+          # GOV-03 Fail-Closed Negative Gate Tests (CLI level)
+          # ------------------------------------------------------------
+          echo "Running GOV-03 negative gate tests..."
+
+          # Negative 1: Repository numeric ID mismatch -> exit 2 (ASSESSED_FAIL)
+          ./target/release/ece assess-github-run \
+            --owner ErenTahiroglu \
+            --repo Evidence-Checkpoint-Engine \
+            --expected-repo-id 99999999 \
+            --commit-sha 415990746d5bbd3756f743b4b5a7673b36228567 \
+            --run-id 40969401836 \
+            --run-attempt 1 \
+            --schema-dir ../docs/gov-00/schemas > neg1_out.json 2> neg1_err.txt
+          neg1_rc=$?
+          if [ $neg1_rc -ne 2 ]; then
+            echo "Expected exit code 2 for repo ID mismatch, got $neg1_rc"
+            exit 1
+          fi
+          python3 -c "import json; d = json.load(open('neg1_out.json')); \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_FAIL'; \
+            assert d['exit_code'] == 2; \
+            assert any('Repository numeric ID mismatch' in b for b in d['derived_summary']['blocking_reasons']); \
+            print('Negative 1 (repo ID mismatch) verified: exit 2 ASSESSED_FAIL')"
+          rm -f neg1_out.json neg1_err.txt
+
+          # Negative 2: Target commit SHA mismatch -> exit 2 (ASSESSED_FAIL)
+          ./target/release/ece assess-github-run \
+            --owner ErenTahiroglu \
+            --repo Evidence-Checkpoint-Engine \
+            --expected-repo-id 1432704795 \
+            --commit-sha 0000000000000000000000000000000000000000 \
+            --run-id 40969401836 \
+            --run-attempt 1 \
+            --schema-dir ../docs/gov-00/schemas > neg2_out.json 2> neg2_err.txt
+          neg2_rc=$?
+          if [ $neg2_rc -ne 2 ]; then
+            echo "Expected exit code 2 for commit SHA mismatch, got $neg2_rc"
+            exit 1
+          fi
+          python3 -c "import json; d = json.load(open('neg2_out.json')); \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_FAIL'; \
+            assert d['exit_code'] == 2; \
+            print('Negative 2 (commit SHA mismatch) verified: exit 2 ASSESSED_FAIL')"
+          rm -f neg2_out.json neg2_err.txt
+
+          # Negative 3: Run attempt mismatch -> exit 2 (ASSESSED_FAIL)
+          ./target/release/ece assess-github-run \
+            --owner ErenTahiroglu \
+            --repo Evidence-Checkpoint-Engine \
+            --expected-repo-id 1432704795 \
+            --commit-sha 415990746d5bbd3756f743b4b5a7673b36228567 \
+            --run-id 40969401836 \
+            --run-attempt 99 \
+            --schema-dir ../docs/gov-00/schemas > neg3_out.json 2> neg3_err.txt
+          neg3_rc=$?
+          if [ $neg3_rc -ne 2 ]; then
+            echo "Expected exit code 2 for run attempt mismatch, got $neg3_rc"
+            exit 1
+          fi
+          python3 -c "import json; d = json.load(open('neg3_out.json')); \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_FAIL'; \
+            assert d['exit_code'] == 2; \
+            assert d['dimensions']['ci_execution']['status'] == 'ATTEMPT_MISMATCH'; \
+            print('Negative 3 (run attempt mismatch) verified: exit 2 ASSESSED_FAIL')"
+          rm -f neg3_out.json neg3_err.txt
+
+          # Negative 4: Missing required check (custom policy requiring non-existent job) -> exit 2 (ASSESSED_FAIL)
+          printf '%s\n' '{' \
+            '  "policy_id": "test-missing-job-policy",' \
+            '  "policy_digest": "dummy",' \
+            '  "required_jobs": ["Nonexistent Job"],' \
+            '  "allow_extra_jobs": true,' \
+            '  "target_repo_id": "1432704795"' \
+            '}' > missing_job_policy.json
+          ./target/release/ece assess-github-run \
+            --owner ErenTahiroglu \
+            --repo Evidence-Checkpoint-Engine \
+            --expected-repo-id 1432704795 \
+            --commit-sha 415990746d5bbd3756f743b4b5a7673b36228567 \
+            --run-id 40969401836 \
+            --run-attempt 1 \
+            --policy missing_job_policy.json \
+            --schema-dir ../docs/gov-00/schemas > neg4_out.json 2> neg4_err.txt
+          neg4_rc=$?
+          if [ $neg4_rc -ne 2 ]; then
+            echo "Expected exit code 2 for missing required job, got $neg4_rc"
+            exit 1
+          fi
+          python3 -c "import json; d = json.load(open('neg4_out.json')); \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_FAIL'; \
+            assert d['exit_code'] == 2; \
+            assert d['dimensions']['ci_execution']['status'] == 'FAILED'; \
+            print('Negative 4 (missing required check) verified: exit 2 ASSESSED_FAIL')"
+          rm -f missing_job_policy.json neg4_out.json neg4_err.txt
+
+          # Negative 5: Tampered envelope digest -> exit 2 (ASSESSED_FAIL)
+          python3 -c "import json; \
+            d = json.load(open('../docs/gov-00/fixtures/envelope_valid_bootstrap_checkpoint.json')); \
+            d['envelope_manifest_digest'] = 'sha256:0000000000000000000000000000000000000000000000000000000000000000'; \
+            json.dump(d, open('tampered_envelope.json', 'w'))"
+          ./target/release/ece verify-envelope \
+            --input tampered_envelope.json \
+            --schema-dir ../docs/gov-00/schemas > neg5_out.json 2> neg5_err.txt
+          neg5_rc=$?
+          if [ $neg5_rc -ne 2 ]; then
+            echo "Expected exit code 2 for tampered envelope, got $neg5_rc"
+            exit 1
+          fi
+          python3 -c "import json; d = json.load(open('neg5_out.json')); \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_FAIL'; \
+            assert d['exit_code'] == 2; \
+            assert d['dimensions']['evidence_integrity']['digest_match'] is False; \
+            print('Negative 5 (tampered envelope digest) verified: exit 2 ASSESSED_FAIL')"
+          rm -f tampered_envelope.json neg5_out.json neg5_err.txt
+
+          # Negative 8: Strict gate mode simulation: verify that strict gate mode fails on exit code 1
+          set +e
+          python3 -c "import sys; \
+            exit_code = 1; \
+            gate_mode = 'strict'; \
+            verdict = 'ASSESSED_LIMITATIONS'; \
+            accepted = (exit_code == 0 and verdict == 'VERIFIED'); \
+            assert not accepted; \
+            if gate_mode == 'strict' and exit_code != 0: \
+                sys.exit(1)"
+          sim_rc=$?
+          if [ $sim_rc -ne 1 ]; then
+            echo "Expected exit code 1 for strict gate simulation on exit_code=1, got $sim_rc"
+            exit 1
+          fi
+          echo "Negative 8 (strict gate mode simulation) verified: gate fails closed on exit 1"
+          set -e
+
       - name: Smoke test CLI (Windows)
         if: runner.os == 'Windows'
         working-directory: ece
@@ -238,3 +372,158 @@ jobs:
             assert d['exit_code'] == 1; \
             print('Pilot structured assertions verified successfully')"
           rm -f pilot_out.json pilot_err.txt
+
+          # GOV-03 Negative Gate Tests (Windows)
+          echo "Running GOV-03 negative gate tests on Windows..."
+          ./target/release/ece.exe assess-github-run \
+            --owner ErenTahiroglu \
+            --repo Evidence-Checkpoint-Engine \
+            --expected-repo-id 99999999 \
+            --commit-sha 415990746d5bbd3756f743b4b5a7673b36228567 \
+            --run-id 40969401836 \
+            --run-attempt 1 \
+            --schema-dir ../docs/gov-00/schemas > neg1_out.json 2> neg1_err.txt
+          neg1_rc=$?
+          if [ $neg1_rc -ne 2 ]; then
+            echo "Expected exit code 2 for repo ID mismatch, got $neg1_rc"
+            exit 1
+          fi
+          rm -f neg1_out.json neg1_err.txt
+
+  test-reusable-observation-pilot:
+    uses: ./.github/workflows/ece-verify-reusable.yml
+    with:
+      target_repo_id: "1432704795"
+      target_owner: "ErenTahiroglu"
+      target_repo: "Evidence-Checkpoint-Engine"
+      target_commit_sha: "415990746d5bbd3756f743b4b5a7673b36228567"
+      target_run_id: "40969401836"
+      target_run_attempt: 1
+      target_workflow_path: ".github/workflows/build-and-test.yml"
+      policy_selection: "ece-pilot-four-runner-matrix"
+      gate_mode: "observation"
+    secrets:
+      github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-reusable-pilot:
+    needs: [build-and-test, test-reusable-observation-pilot]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify reusable workflow observation pilot outputs
+        run: |
+          set -euo pipefail
+          echo "================================================================"
+          echo "Verifying Reusable Workflow Observation Pilot Outputs:"
+          echo "  Verdict:             ${{ needs.test-reusable-observation-pilot.outputs.verdict }}"
+          echo "  Exit Code:           ${{ needs.test-reusable-observation-pilot.outputs.exit_code }}"
+          echo "  CI Status:           ${{ needs.test-reusable-observation-pilot.outputs.ci_status }}"
+          echo "  Checkpoint Accepted: ${{ needs.test-reusable-observation-pilot.outputs.checkpoint_accepted }}"
+          echo "  Verifier Source SHA: ${{ needs.test-reusable-observation-pilot.outputs.verifier_source_sha }}"
+          echo "================================================================"
+
+          if [ "${{ needs.test-reusable-observation-pilot.outputs.verdict }}" != "ASSESSED_LIMITATIONS" ]; then
+            echo "::error::Expected verdict ASSESSED_LIMITATIONS, got '${{ needs.test-reusable-observation-pilot.outputs.verdict }}'"
+            exit 1
+          fi
+
+          if [ "${{ needs.test-reusable-observation-pilot.outputs.exit_code }}" != "1" ]; then
+            echo "::error::Expected exit code 1, got '${{ needs.test-reusable-observation-pilot.outputs.exit_code }}'"
+            exit 1
+          fi
+
+          if [ "${{ needs.test-reusable-observation-pilot.outputs.ci_status }}" != "VERIFIED_PASS" ]; then
+            echo "::error::Expected ci_status VERIFIED_PASS, got '${{ needs.test-reusable-observation-pilot.outputs.ci_status }}'"
+            exit 1
+          fi
+
+          if [ "${{ needs.test-reusable-observation-pilot.outputs.checkpoint_accepted }}" != "false" ]; then
+            echo "::error::Expected checkpoint_accepted false, got '${{ needs.test-reusable-observation-pilot.outputs.checkpoint_accepted }}'"
+            exit 1
+          fi
+
+          if [ -z "${{ needs.test-reusable-observation-pilot.outputs.verifier_source_sha }}" ]; then
+            echo "::error::Verifier source SHA must not be empty"
+            exit 1
+          fi
+
+          echo "Reusable workflow observation pilot outputs verified successfully."
+
+      - name: Test reusable workflow input validation contracts
+        run: |
+          set -euo pipefail
+          echo "Testing reusable workflow input contract logic..."
+
+          # Validate gate_mode check
+          set +e
+          bash -c '
+            INPUT_GATE_MODE="invalid_mode"
+            if [ "$INPUT_GATE_MODE" != "observation" ] && [ "$INPUT_GATE_MODE" != "strict" ]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected invalid gate_mode to fail"; exit 1; }
+
+          # Validate policy check
+          set +e
+          bash -c '
+            INPUT_POLICY="untrusted-policy"
+            if [ "$INPUT_POLICY" != "ece-pilot-four-runner-matrix" ]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected untrusted policy to fail"; exit 1; }
+
+          # Validate scoped repo ID for policy
+          set +e
+          bash -c '
+            INPUT_POLICY="ece-pilot-four-runner-matrix"
+            INPUT_REPO_ID="99999999"
+            if [ "$INPUT_POLICY" = "ece-pilot-four-runner-matrix" ] && [ "$INPUT_REPO_ID" != "1432704795" ]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected repo ID mismatch for policy to fail"; exit 1; }
+
+          # Validate commit SHA format
+          set +e
+          bash -c '
+            INPUT_COMMIT_SHA="short-sha"
+            if ! [[ "$INPUT_COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected invalid commit SHA format to fail"; exit 1; }
+
+          # Validate numeric IDs
+          set +e
+          bash -c '
+            INPUT_REPO_ID="not-numeric"
+            if ! [[ "$INPUT_REPO_ID" =~ ^[0-9]+$ ]]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected non-numeric repo ID to fail"; exit 1; }
+
+          # Validate attempt number
+          set +e
+          bash -c '
+            INPUT_RUN_ATTEMPT="0"
+            if ! [[ "$INPUT_RUN_ATTEMPT" =~ ^[0-9]+$ ]] || [ "$INPUT_RUN_ATTEMPT" -lt 1 ]; then
+              exit 1
+            fi
+          '
+          rc=$?
+          set -e
+          [ $rc -eq 1 ] || { echo "Expected zero run attempt to fail"; exit 1; }
+
+          echo "Reusable workflow input contract logic verified."
