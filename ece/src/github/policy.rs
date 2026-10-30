@@ -100,11 +100,20 @@ impl TrustedCheckPolicy {
             }
         }
         if let Some(ref expected_wf) = self.target_workflow_path {
-            if let Some(actual_wf) = workflow_path {
-                if expected_wf != actual_wf {
+            match workflow_path {
+                Some(actual_wf) => {
+                    if expected_wf != actual_wf {
+                        return Err(format!(
+                            "Policy target workflow mismatch: expected '{}', got '{}'",
+                            expected_wf, actual_wf
+                        ));
+                    }
+                }
+                None => {
                     return Err(format!(
-                        "Policy target workflow mismatch: expected '{}', got '{}'",
-                        expected_wf, actual_wf
+                        "Policy target workflow missing: expected '{}', \
+                         but provider workflow path was not present",
+                        expected_wf
                     ));
                 }
             }
@@ -399,5 +408,10 @@ mod tests {
             .validate_target_scope("1432704795", Some(".github/workflows/other.yml"))
             .unwrap_err();
         assert!(err_wf.contains("Policy target workflow mismatch"));
+
+        let err_wf_missing = policy
+            .validate_target_scope("1432704795", None)
+            .unwrap_err();
+        assert!(err_wf_missing.contains("Policy target workflow missing"));
     }
 }

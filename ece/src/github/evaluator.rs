@@ -40,6 +40,8 @@ pub struct TargetEvidenceRequest {
     pub checkpoint_id: Option<String>,
     pub declared_phase: Option<String>,
     pub declared_producer: Option<String>,
+    pub declared_policy_ref: Option<String>,
+    pub declared_policy_digest: Option<String>,
     pub declared_artifacts: Vec<DeclaredArtifactSpec>,
 }
 
@@ -59,6 +61,10 @@ pub fn evaluate_github_evidence(
         "Independent human authorization (out of scope for CI adapter)".to_string(),
         "Physical device execution (hosted CI runners only, not bare-metal hardware)".to_string(),
         "Cryptographic GPG commit signature verification (commit is unsigned)".to_string(),
+        format!(
+            "Source-declared policy reference/digest authentication \
+             (NOT_EVALUATED; evaluated against operator-selected trusted check policy)"
+        ),
     ];
     let mut blocking_reasons = Vec::new();
     let mut warnings = Vec::new();
@@ -198,12 +204,30 @@ pub fn evaluate_github_evidence(
         }
     };
 
-    // Verify run belongs to this repository
-    if let Some(ref run_repo) = run.repository {
-        if run_repo.id != repo.id {
+    // 1. Verify provider run ID matches requested run ID
+    if run.id != target.run_id {
+        blocking_reasons.push(format!(
+            "Workflow run ID mismatch: requested {} but provider returned {}",
+            target.run_id, run.id
+        ));
+    }
+
+    // 2. Require provider repository identity to be present and match independently
+    //    verified repository ID
+    match run.repository.as_ref() {
+        Some(run_repo) => {
+            if run_repo.id != repo.id {
+                blocking_reasons.push(format!(
+                    "Workflow run {} belongs to repo ID {} but expected repo ID is {}",
+                    run.id, run_repo.id, repo.id
+                ));
+            }
+        }
+        None => {
             blocking_reasons.push(format!(
-                "Workflow run {} belongs to repo ID {} but expected repo ID is {}",
-                run.id, run_repo.id, repo.id
+                "Workflow run {} contains no provider repository identity to bind \
+                 against repo ID {}",
+                run.id, repo.id
             ));
         }
     }
@@ -238,11 +262,21 @@ pub fn evaluate_github_evidence(
 
     // Verify workflow path if declared
     if let Some(ref expected_path) = target.expected_workflow_path {
-        if let Some(ref actual_path) = run.path {
-            if actual_path != expected_path {
+        match run.path.as_deref() {
+            Some(actual_path) => {
+                if actual_path != expected_path {
+                    blocking_reasons.push(format!(
+                        "Workflow definition path mismatch: declared '{}' but provider \
+                         returned '{}'",
+                        expected_path, actual_path
+                    ));
+                }
+            }
+            None => {
                 blocking_reasons.push(format!(
-                    "Workflow definition path mismatch: declared '{}' but provider returned '{}'",
-                    expected_path, actual_path
+                    "Workflow definition path missing: declared '{}' but provider returned \
+                     no workflow path",
+                    expected_path
                 ));
             }
         }
@@ -253,6 +287,38 @@ pub fn evaluate_github_evidence(
         policy.validate_target_scope(&target.expected_repo_id, run.path.as_deref())
     {
         blocking_reasons.push(scope_err);
+    }
+
+    // Policy reference & digest reconciliation against operator-selected policy
+    if target.declared_policy_ref.is_some() || target.declared_policy_digest.is_some() {
+        let matches_ref = target
+            .declared_policy_ref
+            .as_deref()
+            .map(|r| r == policy.policy_id)
+            .unwrap_or(false);
+        let matches_digest = target
+            .declared_policy_digest
+            .as_deref()
+            .map(|d| d.eq_ignore_ascii_case(&policy.policy_digest))
+            .unwrap_or(false);
+
+        if matches_ref && matches_digest {
+            checks_performed.push(format!(
+                "Checkpoint declared policy reference and digest match operator-selected \
+                 policy '{}'",
+                policy.policy_id
+            ));
+        } else {
+            warnings.push(format!(
+                "POLICY_REFERENCE_NOT_EVALUATED: Checkpoint declared policy metadata \
+                 (ref='{:?}', digest='{:?}') was not authenticated; evaluated against \
+                 operator-selected policy '{}' ({})",
+                target.declared_policy_ref,
+                target.declared_policy_digest,
+                policy.policy_id,
+                policy.policy_digest
+            ));
+        }
     }
 
     // Verify run overall status and conclusion
@@ -358,17 +424,15 @@ pub fn evaluate_github_evidence(
 
     let evidence_availability_status = match artifacts_res {
         Err(e) => {
-            if target.declared_artifacts.is_empty() {
-                warnings.push(format!(
-                    "GitHub REST API artifact lookup returned error: {e}"
-                ));
-                "NOT_PROVIDED"
-            } else {
+            warnings.push(format!(
+                "GitHub REST API artifact metadata lookup failed: {e}"
+            ));
+            if !target.declared_artifacts.is_empty() {
                 blocking_reasons.push(format!(
                     "GitHub REST API artifact metadata lookup failed: {e}"
                 ));
-                "UNREACHABLE"
             }
+            "UNREACHABLE"
         }
         Ok(observed_artifacts) => {
             if target.declared_artifacts.is_empty() {

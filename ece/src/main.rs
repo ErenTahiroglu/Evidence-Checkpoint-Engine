@@ -276,6 +276,16 @@ fn extract_target_from_json(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    let declared_policy_ref = payload
+        .pointer("/ci_evidence/expected_policy_ref")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let declared_policy_digest = payload
+        .pointer("/ci_evidence/expected_policy_digest")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     let mut declared_artifacts = Vec::new();
     if let Some(arr) = payload
         .pointer("/artifact_evidence")
@@ -315,6 +325,8 @@ fn extract_target_from_json(
         checkpoint_id,
         declared_phase,
         declared_producer,
+        declared_policy_ref,
+        declared_policy_digest,
         declared_artifacts,
     })
 }
@@ -531,6 +543,8 @@ fn main() {
                 checkpoint_id: None,
                 declared_phase: Some("GOV-02".to_string()),
                 declared_producer: Some("CLI-invoker".to_string()),
+                declared_policy_ref: None,
+                declared_policy_digest: None,
                 declared_artifacts: Vec::new(),
             };
             let policy = match load_policy(policy_path) {

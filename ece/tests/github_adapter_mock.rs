@@ -128,6 +128,8 @@ fn pilot_target() -> TargetEvidenceRequest {
         checkpoint_id: Some("ece-gov-02-pilot-checkpoint".to_string()),
         declared_phase: Some("GOV-02".to_string()),
         declared_producer: Some("Eren Tahiroğlu".to_string()),
+        declared_policy_ref: None,
+        declared_policy_digest: None,
         declared_artifacts: Vec::new(),
     }
 }
@@ -1189,4 +1191,259 @@ fn test_28_policy_duplicate_required_jobs_rejected() {
         .as_str()
         .unwrap()
         .contains("Trusted check policy contains duplicate required job")));
+}
+
+#[test]
+fn test_29_missing_workflow_path_when_policy_requires() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    let mut run = sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    );
+    run.path = None; // Missing workflow path
+    provider.run_result = Some(Ok(run));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons
+        .iter()
+        .any(|r| r.as_str().unwrap().contains("Policy target workflow missing")));
+}
+
+#[test]
+fn test_30_run_id_mismatch() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    let run = sample_run(
+        &target.commit_sha,
+        99999999, // Mismatched run ID
+        1,
+        "completed",
+        Some("success"),
+    );
+    provider.run_result = Some(Ok(run));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons
+        .iter()
+        .any(|r| r.as_str().unwrap().contains("Workflow run ID mismatch")));
+}
+
+#[test]
+fn test_31_run_missing_repository() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    let mut run = sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    );
+    run.repository = None; // Missing repository field
+    provider.run_result = Some(Ok(run));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons.iter().any(|r| r
+        .as_str()
+        .unwrap()
+        .contains("contains no provider repository identity")));
+}
+
+#[test]
+fn test_32_run_repo_id_mismatch() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    let mut run = sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    );
+    run.repository = Some(GitHubRunRepo {
+        id: 999999999, // Mismatched repo ID
+        full_name: "other/repo".to_string(),
+    });
+    provider.run_result = Some(Ok(run));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons
+        .iter()
+        .any(|r| r.as_str().unwrap().contains("belongs to repo ID 999999999")));
+}
+
+#[test]
+fn test_33_artifact_api_error_empty_declared_artifacts() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target(); // declared_artifacts is empty
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Err(GitHubClientError::HttpError {
+        status: 500,
+        message: "Internal Server Error".to_string(),
+        rate_limit_reset: None,
+    }));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_availability"]["status"],
+        "UNREACHABLE"
+    );
+    assert_ne!(
+        output.assessment["dimensions"]["evidence_availability"]["status"],
+        "NOT_PROVIDED"
+    );
+    let warnings = output.assessment["derived_summary"]["warnings"]
+        .as_array()
+        .unwrap();
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .contains("GitHub REST API artifact metadata lookup failed")));
+}
+
+#[test]
+fn test_34_declared_policy_metadata_unverified() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.declared_policy_ref = Some("arbitrary-policy.json".to_string());
+    target.declared_policy_digest = Some(
+        "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+    );
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    let warnings = output.assessment["derived_summary"]["warnings"]
+        .as_array()
+        .unwrap();
+    assert!(warnings
+        .iter()
+        .any(|w| w.as_str().unwrap().contains("POLICY_REFERENCE_NOT_EVALUATED")));
+    let omitted = output.assessment["checks_omitted"].as_array().unwrap();
+    assert!(omitted.iter().any(|o| o
+        .as_str()
+        .unwrap()
+        .contains("Source-declared policy reference/digest authentication (NOT_EVALUATED")));
+}
+
+#[test]
+fn test_35_declared_policy_metadata_matches() {
+    let schema_dir = resolve_schema_dir();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+    let mut target = pilot_target();
+    target.declared_policy_ref = Some(policy.policy_id.clone());
+    target.declared_policy_digest = Some(policy.policy_digest.clone());
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    let performed = output.assessment["checks_performed"].as_array().unwrap();
+    assert!(performed.iter().any(|p| p.as_str().unwrap().contains(
+        "Checkpoint declared policy reference and digest match operator-selected policy",
+    )));
 }
