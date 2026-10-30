@@ -141,19 +141,16 @@ jobs:
             cat pilot_err.txt
             exit 1
           fi
-          python3 -c "
-import json
-with open('pilot_out.json') as f:
-    d = json.load(f)
-assert d['dimensions']['ci_execution']['status'] == 'VERIFIED_PASS'
-assert d['dimensions']['evidence_integrity']['status'] == 'NOT_EVALUATED'
-assert d['dimensions']['evidence_integrity']['digest_match'] is False
-assert d['claims_breakdown']['machine_assessed']['digest_verified'] is False
-assert d['claims_breakdown']['machine_assessed']['schema_conformant'] is False
-assert d['derived_summary']['verdict'] == 'ASSESSED_LIMITATIONS'
-assert d['exit_code'] == 1
-print('Pilot structured assertions verified successfully')
-"
+          python3 -c "import json; \
+            d = json.load(open('pilot_out.json')); \
+            assert d['dimensions']['ci_execution']['status'] == 'VERIFIED_PASS'; \
+            assert d['dimensions']['evidence_integrity']['status'] == 'NOT_EVALUATED'; \
+            assert d['dimensions']['evidence_integrity']['digest_match'] is False; \
+            assert d['claims_breakdown']['machine_assessed']['digest_verified'] is False; \
+            assert d['claims_breakdown']['machine_assessed']['schema_conformant'] is False; \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_LIMITATIONS'; \
+            assert d['exit_code'] == 1; \
+            print('Pilot structured assertions verified successfully')"
           rm -f pilot_out.json pilot_err.txt
 
       - name: Smoke test CLI (Windows)
@@ -230,17 +227,14 @@ print('Pilot structured assertions verified successfully')
             cat pilot_err.txt
             exit 1
           fi
-          python3 -c "
-import json
-with open('pilot_out.json') as f:
-    d = json.load(f)
-assert d['dimensions']['ci_execution']['status'] == 'VERIFIED_PASS'
-assert d['dimensions']['evidence_integrity']['status'] == 'NOT_EVALUATED'
-assert d['dimensions']['evidence_integrity']['digest_match'] is False
-assert d['claims_breakdown']['machine_assessed']['digest_verified'] is False
-assert d['claims_breakdown']['machine_assessed']['schema_conformant'] is False
-assert d['derived_summary']['verdict'] == 'ASSESSED_LIMITATIONS'
-assert d['exit_code'] == 1
-print('Pilot structured assertions verified successfully')
-"
+          python3 -c "import json; \
+            d = json.load(open('pilot_out.json')); \
+            assert d['dimensions']['ci_execution']['status'] == 'VERIFIED_PASS'; \
+            assert d['dimensions']['evidence_integrity']['status'] == 'NOT_EVALUATED'; \
+            assert d['dimensions']['evidence_integrity']['digest_match'] is False; \
+            assert d['claims_breakdown']['machine_assessed']['digest_verified'] is False; \
+            assert d['claims_breakdown']['machine_assessed']['schema_conformant'] is False; \
+            assert d['derived_summary']['verdict'] == 'ASSESSED_LIMITATIONS'; \
+            assert d['exit_code'] == 1; \
+            print('Pilot structured assertions verified successfully')"
           rm -f pilot_out.json pilot_err.txt
