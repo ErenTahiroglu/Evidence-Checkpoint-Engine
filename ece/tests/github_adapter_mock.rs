@@ -2,8 +2,8 @@
 
 use ece_lib::github::client::{GitHubClientError, HttpGitHubClient};
 use ece_lib::github::models::{
-    GitHubArtifact, GitHubCommit, GitHubCommitDetails, GitHubJob, GitHubRepository,
-    GitHubRunRepo, GitHubUser, GitHubWorkflowRun,
+    GitHubArtifact, GitHubCommit, GitHubCommitDetails, GitHubJob, GitHubRepository, GitHubRunRepo,
+    GitHubUser, GitHubWorkflowRun,
 };
 use ece_lib::github::policy::TrustedCheckPolicy;
 use ece_lib::github::{
@@ -495,13 +495,12 @@ fn test_10_pagination_in_http_client() {
         }
     });
 
-    let client = HttpGitHubClient::new_with_base_url(
-        format!("http://127.0.0.1:{port}"),
-        None,
-    )
-    .unwrap();
+    let client =
+        HttpGitHubClient::new_with_base_url(format!("http://127.0.0.1:{port}"), None).unwrap();
     use ece_lib::github::GitHubProvider;
-    let jobs = client.get_attempt_jobs("o", "r", 123, 1).expect("fetches paginated jobs");
+    let jobs = client
+        .get_attempt_jobs("o", "r", 123, 1)
+        .expect("fetches paginated jobs");
     assert_eq!(jobs.len(), 4);
     assert_eq!(jobs[0].name, "j1");
     assert_eq!(jobs[3].name, "j4");

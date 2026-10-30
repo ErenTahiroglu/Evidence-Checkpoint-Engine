@@ -192,9 +192,8 @@ pub fn evaluate_github_evidence(
     }
 
     // 5. Run-Attempt Specific Jobs Verification
-    checks_performed.push(
-        "GitHub REST API exact attempt jobs matching against trusted policy".to_string(),
-    );
+    checks_performed
+        .push("GitHub REST API exact attempt jobs matching against trusted policy".to_string());
     let jobs_res = provider.get_attempt_jobs(
         &target.owner,
         &target.repo,
@@ -254,9 +253,8 @@ pub fn evaluate_github_evidence(
                 }
                 PolicyStatus::UntrustedPolicy => {
                     ci_status = "UNVERIFIED_RUN";
-                    warnings.push(
-                        "Trusted policy has zero required jobs; CI unverified".to_string(),
-                    );
+                    warnings
+                        .push("Trusted policy has zero required jobs; CI unverified".to_string());
                 }
             }
         }
@@ -359,12 +357,10 @@ pub fn evaluate_github_evidence(
         ("INSUFFICIENT_EVIDENCE", 3)
     } else {
         warnings.push(
-            "CI run independently verified; does not attest live branch HEAD freshness"
-                .to_string(),
+            "CI run independently verified; does not attest live branch HEAD freshness".to_string(),
         );
-        warnings.push(
-            "Independent code review not performed; review status is UNREVIEWED".to_string(),
-        );
+        warnings
+            .push("Independent code review not performed; review status is UNREVIEWED".to_string());
         warnings.push("Independent human owner authorization is pending".to_string());
         ("ASSESSED_LIMITATIONS", 1)
     };

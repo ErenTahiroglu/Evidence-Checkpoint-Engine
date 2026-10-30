@@ -54,8 +54,11 @@ pub enum GitHubClientError {
 }
 
 pub trait GitHubProvider: Send + Sync {
-    fn get_repository(&self, owner: &str, repo: &str)
-        -> Result<GitHubRepository, GitHubClientError>;
+    fn get_repository(
+        &self,
+        owner: &str,
+        repo: &str,
+    ) -> Result<GitHubRepository, GitHubClientError>;
     fn get_commit(
         &self,
         owner: &str,
@@ -209,7 +212,9 @@ impl HttpGitHubClient {
             .map_err(|e| GitHubClientError::NetworkError(e.to_string()))?;
 
         if buffer.len() as u64 > MAX_RESPONSE_BYTES {
-            return Err(GitHubClientError::SizeLimitExceeded(MAX_RESPONSE_BYTES as usize));
+            return Err(GitHubClientError::SizeLimitExceeded(
+                MAX_RESPONSE_BYTES as usize,
+            ));
         }
 
         if buffer.is_empty() {
@@ -236,7 +241,10 @@ impl GitHubProvider for HttpGitHubClient {
         repo: &str,
         commit_sha: &str,
     ) -> Result<GitHubCommit, GitHubClientError> {
-        let url = format!("{}/repos/{}/{}/commits/{}", self.base_url, owner, repo, commit_sha);
+        let url = format!(
+            "{}/repos/{}/{}/commits/{}",
+            self.base_url, owner, repo, commit_sha
+        );
         self.read_bounded_json(&url)
     }
 
@@ -246,7 +254,10 @@ impl GitHubProvider for HttpGitHubClient {
         repo: &str,
         run_id: u64,
     ) -> Result<GitHubWorkflowRun, GitHubClientError> {
-        let url = format!("{}/repos/{}/{}/actions/runs/{}", self.base_url, owner, repo, run_id);
+        let url = format!(
+            "{}/repos/{}/{}/actions/runs/{}",
+            self.base_url, owner, repo, run_id
+        );
         self.read_bounded_json(&url)
     }
 
@@ -373,9 +384,11 @@ impl GitHubProvider for MockGitHubProvider {
         _owner: &str,
         _repo: &str,
     ) -> Result<GitHubRepository, GitHubClientError> {
-        self.repo_result
-            .clone()
-            .unwrap_or_else(|| Err(GitHubClientError::NotFound { resource: "repo".into() }))
+        self.repo_result.clone().unwrap_or_else(|| {
+            Err(GitHubClientError::NotFound {
+                resource: "repo".into(),
+            })
+        })
     }
 
     fn get_commit(
@@ -384,9 +397,11 @@ impl GitHubProvider for MockGitHubProvider {
         _repo: &str,
         _commit_sha: &str,
     ) -> Result<GitHubCommit, GitHubClientError> {
-        self.commit_result
-            .clone()
-            .unwrap_or_else(|| Err(GitHubClientError::NotFound { resource: "commit".into() }))
+        self.commit_result.clone().unwrap_or_else(|| {
+            Err(GitHubClientError::NotFound {
+                resource: "commit".into(),
+            })
+        })
     }
 
     fn get_workflow_run(
@@ -395,9 +410,11 @@ impl GitHubProvider for MockGitHubProvider {
         _repo: &str,
         _run_id: u64,
     ) -> Result<GitHubWorkflowRun, GitHubClientError> {
-        self.run_result
-            .clone()
-            .unwrap_or_else(|| Err(GitHubClientError::NotFound { resource: "run".into() }))
+        self.run_result.clone().unwrap_or_else(|| {
+            Err(GitHubClientError::NotFound {
+                resource: "run".into(),
+            })
+        })
     }
 
     fn get_attempt_jobs(
@@ -407,9 +424,11 @@ impl GitHubProvider for MockGitHubProvider {
         _run_id: u64,
         _attempt: u32,
     ) -> Result<Vec<GitHubJob>, GitHubClientError> {
-        self.jobs_result
-            .clone()
-            .unwrap_or_else(|| Err(GitHubClientError::NotFound { resource: "jobs".into() }))
+        self.jobs_result.clone().unwrap_or_else(|| {
+            Err(GitHubClientError::NotFound {
+                resource: "jobs".into(),
+            })
+        })
     }
 
     fn get_artifacts(

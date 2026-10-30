@@ -100,14 +100,18 @@ impl TrustedCheckPolicy {
 
             if matches.is_empty() {
                 missing_jobs.push(req.clone());
-                details.push(format!("Required job '{req}' was NOT observed in run attempt"));
+                details.push(format!(
+                    "Required job '{req}' was NOT observed in run attempt"
+                ));
                 continue;
             }
 
             // Check if duplicate entries have conflicting conclusions
             if matches.len() > 1 {
                 let first_conc = matches[0].conclusion.as_deref();
-                let has_conflict = matches.iter().any(|m| m.conclusion.as_deref() != first_conc);
+                let has_conflict = matches
+                    .iter()
+                    .any(|m| m.conclusion.as_deref() != first_conc);
                 if has_conflict {
                     conflicting_jobs.push(req.clone());
                     details.push(format!(
@@ -120,7 +124,10 @@ impl TrustedCheckPolicy {
             let job = matches[0];
             if job.status != "completed" {
                 in_progress_jobs.push(req.clone());
-                details.push(format!("Job '{req}' is not completed (status='{}')", job.status));
+                details.push(format!(
+                    "Job '{req}' is not completed (status='{}')",
+                    job.status
+                ));
             } else {
                 match job.conclusion.as_deref() {
                     Some("success") => {

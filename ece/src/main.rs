@@ -46,7 +46,10 @@ enum Commands {
 
     #[command(about = "Verify a checkpoint against live GitHub REST API evidence")]
     VerifyGithubEvidence {
-        #[arg(long, help = "Path to envelope or payload JSON file or '-' to read from stdin")]
+        #[arg(
+            long,
+            help = "Path to envelope or payload JSON file or '-' to read from stdin"
+        )]
         input: String,
 
         #[arg(long, help = "Path to custom trusted policy JSON file (optional)")]
@@ -189,13 +192,23 @@ fn extract_target_from_json(
     let owner = payload
         .pointer("/repository/owner")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ("Missing /repository/owner in checkpoint payload".to_string(), 3))?
+        .ok_or_else(|| {
+            (
+                "Missing /repository/owner in checkpoint payload".to_string(),
+                3,
+            )
+        })?
         .to_string();
 
     let repo = payload
         .pointer("/repository/name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ("Missing /repository/name in checkpoint payload".to_string(), 3))?
+        .ok_or_else(|| {
+            (
+                "Missing /repository/name in checkpoint payload".to_string(),
+                3,
+            )
+        })?
         .to_string();
 
     let expected_repo_id = payload
@@ -212,7 +225,12 @@ fn extract_target_from_json(
     let commit_sha = payload
         .pointer("/source/commit_sha")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ("Missing /source/commit_sha in checkpoint payload".to_string(), 3))?
+        .ok_or_else(|| {
+            (
+                "Missing /source/commit_sha in checkpoint payload".to_string(),
+                3,
+            )
+        })?
         .to_string();
 
     let run_id = payload
@@ -257,7 +275,10 @@ fn extract_target_from_json(
         .map(|s| s.to_string());
 
     let mut declared_artifacts = Vec::new();
-    if let Some(arr) = payload.pointer("/artifact_evidence").and_then(|v| v.as_array()) {
+    if let Some(arr) = payload
+        .pointer("/artifact_evidence")
+        .and_then(|v| v.as_array())
+    {
         for item in arr {
             if let Some(name) = item.get("artifact_name").and_then(|v| v.as_str()) {
                 let id = item.get("artifact_id").and_then(|v| {
