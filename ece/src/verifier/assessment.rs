@@ -23,7 +23,7 @@ pub struct VerificationOutput {
 
 /// Validate an assessment against assessment-output.schema.json, returning
 /// `Ok(output)` if valid, or `Err(VerifierError::OutputSchemaViolation)` fail-closed.
-fn validate_and_wrap(
+pub fn validate_and_wrap(
     store: &SchemaStore,
     output: VerificationOutput,
 ) -> Result<VerificationOutput, VerifierError> {
