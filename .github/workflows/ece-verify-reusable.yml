@@ -39,17 +39,17 @@ on:
         type: string
         default: "ece-pilot-four-runner-matrix"
       gate_mode:
-        description: "Verification gate mode: 'observation' (report only) or 'strict' (fail unless exit 0)"
+        description: "Verification gate mode: 'observation' (report only) or 'strict' (fail unless accepted)"
         required: false
         type: string
         default: "strict"
       verifier_ref:
-        description: "Commit SHA or ref to checkout ECE verifier source from (optional; defaults to caller ref)"
+        description: "Commit SHA of approved ECE verifier source (fixed to approved baseline: fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c)"
         required: false
         type: string
-        default: ""
+        default: "fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c"
       verifier_repo:
-        description: "Repository from which to checkout ECE verifier source"
+        description: "Repository of approved ECE verifier source (fixed to ErenTahiroglu/Evidence-Checkpoint-Engine)"
         required: false
         type: string
         default: "ErenTahiroglu/Evidence-Checkpoint-Engine"
@@ -59,19 +59,22 @@ on:
         required: false
     outputs:
       verdict:
-        description: "ECE verifier verdict (e.g. ASSESSED_LIMITATIONS, VERIFIED, ASSESSED_FAIL)"
+        description: "ECE verifier verdict (e.g. ASSESSED_LIMITATIONS, ASSESSED_PROVISIONAL_PASS, ASSESSED_FAIL)"
         value: ${{ jobs.verify.outputs.verdict }}
       exit_code:
         description: "ECE verifier numeric exit code (0, 1, 2, 3, 4)"
         value: ${{ jobs.verify.outputs.exit_code }}
+      cli_rc:
+        description: "Actual CLI process return code"
+        value: ${{ jobs.verify.outputs.cli_rc }}
       ci_status:
         description: "CI execution status (e.g. VERIFIED_PASS, FAILED, UNVERIFIED_RUN)"
         value: ${{ jobs.verify.outputs.ci_status }}
       checkpoint_accepted:
-        description: "Whether checkpoint is genuinely fully verified/accepted (true only for exit code 0)"
+        description: "Whether checkpoint is genuinely accepted (true only for exit code 0 and ASSESSED_PROVISIONAL_PASS)"
         value: ${{ jobs.verify.outputs.checkpoint_accepted }}
       verifier_source_sha:
-        description: "Commit SHA of the ECE verifier source used"
+        description: "Commit SHA of the approved ECE verifier source used"
         value: ${{ jobs.verify.outputs.verifier_source_sha }}
 
 permissions:
@@ -84,6 +87,7 @@ jobs:
     outputs:
       verdict: ${{ steps.parse_and_summarize.outputs.verdict }}
       exit_code: ${{ steps.parse_and_summarize.outputs.exit_code }}
+      cli_rc: ${{ steps.parse_and_summarize.outputs.cli_rc }}
       ci_status: ${{ steps.parse_and_summarize.outputs.ci_status }}
       checkpoint_accepted: ${{ steps.parse_and_summarize.outputs.checkpoint_accepted }}
       verifier_source_sha: ${{ steps.provenance.outputs.verifier_source_sha }}
@@ -99,6 +103,8 @@ jobs:
           INPUT_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
           INPUT_POLICY: ${{ inputs.policy_selection }}
           INPUT_GATE_MODE: ${{ inputs.gate_mode }}
+          INPUT_VERIFIER_REPO: ${{ inputs.verifier_repo }}
+          INPUT_VERIFIER_REF: ${{ inputs.verifier_ref }}
         run: |
           set -euo pipefail
 
@@ -142,55 +148,62 @@ jobs:
             exit 1
           fi
 
+          # 6. Validate Immutable Verifier Source Authority (GOV-03 R1)
+          if [ "$INPUT_VERIFIER_REPO" != "ErenTahiroglu/Evidence-Checkpoint-Engine" ]; then
+            echo "::error::Unauthorized verifier_repo '$INPUT_VERIFIER_REPO'. For authoritative gate use, repository must be 'ErenTahiroglu/Evidence-Checkpoint-Engine'."
+            exit 1
+          fi
+
+          if [ -n "$INPUT_VERIFIER_REF" ] && [ "$INPUT_VERIFIER_REF" != "fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c" ]; then
+            echo "::error::Unauthorized verifier_ref '$INPUT_VERIFIER_REF'. For authoritative gate use, source commit must be approved immutable GOV-02 baseline 'fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c'."
+            exit 1
+          fi
+
           echo "Input contract and policy scope validated successfully."
 
-      - name: Resolve verifier target
-        id: resolve_target
-        env:
-          INPUT_REPO: ${{ inputs.verifier_repo }}
-          INPUT_REF: ${{ inputs.verifier_ref }}
-        run: |
-          set -euo pipefail
-          if [ -n "$INPUT_REF" ]; then
-            TARGET_REF="$INPUT_REF"
-            TARGET_REPO="$INPUT_REPO"
-          elif [ "${{ github.repository }}" = "$INPUT_REPO" ]; then
-            TARGET_REPO="${{ github.repository }}"
-            TARGET_REF="${{ github.ref }}"
-          else
-            TARGET_REPO="$INPUT_REPO"
-            TARGET_REF="development"
-          fi
-          echo "target_repo=$TARGET_REPO" >> "$GITHUB_OUTPUT"
-          echo "target_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
-          echo "Resolved verifier target: repo=$TARGET_REPO ref=$TARGET_REF"
-
-      - name: Checkout ECE verifier source
+      - name: Checkout approved immutable ECE verifier source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
-          repository: ${{ steps.resolve_target.outputs.target_repo }}
-          ref: ${{ steps.resolve_target.outputs.target_ref }}
+          repository: ErenTahiroglu/Evidence-Checkpoint-Engine
+          ref: fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c
           path: ece-verifier
+          persist-credentials: false
 
-      - name: Record and bind verifier provenance
+      - name: Verify verifier source integrity and bind provenance
         id: provenance
+        env:
+          EXPECTED_SHA: "fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c"
+          CALLER_REPO: ${{ github.repository }}
+          CALLER_REF: ${{ github.ref }}
+          CALLER_SHA: ${{ github.sha }}
+          TARGET_REPO_ID: ${{ inputs.target_repo_id }}
+          TARGET_OWNER: ${{ inputs.target_owner }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_COMMIT: ${{ inputs.target_commit_sha }}
+          TARGET_RUN_ID: ${{ inputs.target_run_id }}
+          TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
+          GATE_MODE: ${{ inputs.gate_mode }}
         run: |
           set -euo pipefail
-          VERIFIER_SHA=$(git -C ece-verifier rev-parse HEAD)
-          echo "verifier_source_sha=$VERIFIER_SHA" >> "$GITHUB_OUTPUT"
+          ACTUAL_SHA=$(git -C ece-verifier rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Verifier source integrity check failed: expected '$EXPECTED_SHA', got '$ACTUAL_SHA'"
+            exit 1
+          fi
+          echo "verifier_source_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "================================================================"
-          echo "ECE Verifier Provenance:"
-          echo "  Caller Repository: ${{ github.repository }}"
-          echo "  Caller Ref:        ${{ github.ref }}"
-          echo "  Caller SHA:        ${{ github.sha }}"
-          echo "  Verifier Repo:     ${{ inputs.verifier_repo }}"
-          echo "  Verifier Source:   $VERIFIER_SHA"
-          echo "  Target Repo ID:    ${{ inputs.target_repo_id }}"
-          echo "  Target Repo:       ${{ inputs.target_owner }}/${{ inputs.target_repo }}"
-          echo "  Target Commit:     ${{ inputs.target_commit_sha }}"
-          echo "  Target Run ID:     ${{ inputs.target_run_id }}"
-          echo "  Target Run Attempt:${{ inputs.target_run_attempt }}"
-          echo "  Gate Mode:         ${{ inputs.gate_mode }}"
+          echo "ECE Verifier Provenance (Strictly Bound):"
+          echo "  Caller Repository: $CALLER_REPO"
+          echo "  Caller Ref:        $CALLER_REF"
+          echo "  Caller SHA:        $CALLER_SHA"
+          echo "  Approved Verifier: ErenTahiroglu/Evidence-Checkpoint-Engine"
+          echo "  Verifier Source:   $ACTUAL_SHA (immutable GOV-02 baseline)"
+          echo "  Target Repo ID:    $TARGET_REPO_ID"
+          echo "  Target Repo:       $TARGET_OWNER/$TARGET_REPO"
+          echo "  Target Commit:     $TARGET_COMMIT"
+          echo "  Target Run ID:     $TARGET_RUN_ID"
+          echo "  Target Run Attempt:$TARGET_RUN_ATTEMPT"
+          echo "  Gate Mode:         $GATE_MODE"
           echo "================================================================"
 
       - name: Install Rust toolchain
@@ -221,12 +234,13 @@ jobs:
           TARGET_RUN_ID: ${{ inputs.target_run_id }}
           TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
           PASSED_TOKEN: ${{ secrets.evidence_token }}
+          DEFAULT_TOKEN: ${{ github.token }}
         run: |
           set +e
           if [ -n "$PASSED_TOKEN" ]; then
             export GITHUB_TOKEN="$PASSED_TOKEN"
-          elif [ -n "${{ github.token }}" ]; then
-            export GITHUB_TOKEN="${{ github.token }}"
+          elif [ -n "$DEFAULT_TOKEN" ]; then
+            export GITHUB_TOKEN="$DEFAULT_TOKEN"
           fi
 
           mkdir -p verifier_output
@@ -241,13 +255,13 @@ jobs:
           CLI_RC=$?
           set -e
 
-          echo "CLI exited with code: $CLI_RC"
-          echo "CLI_RC=$CLI_RC" >> "$GITHUB_ENV"
+          echo "CLI process exited with code: $CLI_RC"
+          echo "cli_rc=$CLI_RC" >> "$GITHUB_OUTPUT"
 
       - name: Parse output and generate structured six-dimensional summary
         id: parse_and_summarize
         env:
-          CLI_RC: ${{ env.CLI_RC }}
+          CLI_RC: ${{ steps.run_verifier.outputs.cli_rc }}
           GATE_MODE: ${{ inputs.gate_mode }}
           TARGET_REPO_ID: ${{ inputs.target_repo_id }}
           TARGET_OWNER: ${{ inputs.target_owner }}
@@ -259,14 +273,23 @@ jobs:
           ECE_VERIFIER_SHA: ${{ steps.provenance.outputs.verifier_source_sha }}
         run: |
           python3 - << 'PYEOF'
+          import html
           import json
           import os
           import sys
 
-          cli_rc_env = os.environ.get("CLI_RC", "4")
+          ALLOWED_VERDICTS = [
+              "ASSESSED_PROVISIONAL_PASS",
+              "ASSESSED_LIMITATIONS",
+              "ASSESSED_FAIL",
+              "INSUFFICIENT_EVIDENCE",
+              "REFUSED",
+          ]
+
+          cli_rc_str = os.environ.get("CLI_RC", "")
           try:
-              cli_rc = int(cli_rc_env)
-          except ValueError:
+              cli_rc = int(cli_rc_str)
+          except (ValueError, TypeError):
               cli_rc = 4
 
           gate_mode = os.environ.get("GATE_MODE", "strict")
@@ -284,97 +307,160 @@ jobs:
           assessment_file = "verifier_output/assessment.json"
           stderr_file = "verifier_output/ece_stderr.log"
 
-          data = {}
-          if os.path.exists(assessment_file) and os.path.getsize(assessment_file) > 0:
+          data = None
+          is_valid_assessment = False
+          parse_error_msg = None
+
+          if not os.path.exists(assessment_file) or os.path.getsize(assessment_file) == 0:
+              parse_error_msg = "Assessment output file missing or empty"
+          else:
               try:
                   with open(assessment_file, "r", encoding="utf-8") as f:
                       data = json.load(f)
+                  if not isinstance(data, dict):
+                      parse_error_msg = "Assessment root is not a valid JSON object"
+                  else:
+                      is_valid_assessment = True
               except Exception as e:
-                  print(f"Warning: Failed to parse assessment JSON: {e}", file=sys.stderr)
-                  data = {}
+                  parse_error_msg = f"Failed to parse assessment JSON: {e}"
 
-          derived = data.get("derived_summary", {})
-          verdict = derived.get("verdict", "OPERATIONAL_ERROR" if cli_rc == 4 else "UNKNOWN")
-          reported_exit_code = data.get("exit_code", cli_rc)
-          dimensions = data.get("dimensions", {})
-          ci_exec = dimensions.get("ci_execution", {})
+          if not is_valid_assessment:
+              print(f"Warning: {parse_error_msg}", file=sys.stderr)
+              data = {}
+
+          derived = data.get("derived_summary", {}) if isinstance(data, dict) else {}
+          raw_verdict = derived.get("verdict") if isinstance(derived, dict) else None
+
+          # Strictly validate verdict against schema enum
+          if raw_verdict in ALLOWED_VERDICTS:
+              verdict = raw_verdict
+          else:
+              verdict = "REFUSED" if cli_rc != 0 else "OPERATIONAL_ERROR"
+              if is_valid_assessment:
+                  is_valid_assessment = False
+                  print(f"Warning: Unknown or invalid verdict '{raw_verdict}'", file=sys.stderr)
+
+          json_exit_code = data.get("exit_code") if isinstance(data, dict) else None
+          if json_exit_code is not None and not isinstance(json_exit_code, int):
+              is_valid_assessment = False
+              json_exit_code = None
+
+          # Strictly require CLI process exit code to match JSON exit code
+          contradiction = False
+          if is_valid_assessment:
+              if json_exit_code != cli_rc:
+                  contradiction = True
+                  is_valid_assessment = False
+                  print(
+                      f"Contradiction detected: CLI process exit code ({cli_rc}) != JSON exit_code ({json_exit_code})",
+                      file=sys.stderr,
+                  )
+
+          effective_exit_code = cli_rc if (json_exit_code is None or contradiction) else json_exit_code
+
+          dimensions = data.get("dimensions", {}) if isinstance(data, dict) else {}
+          ci_exec = dimensions.get("ci_execution", {}) if isinstance(dimensions, dict) else {}
           ci_status = ci_exec.get("status", "UNVERIFIED_RUN")
           observed_jobs = ci_exec.get("observed_jobs_count", 0)
           expected_jobs = ci_exec.get("expected_jobs_count", 0)
 
-          # Checkpoint accepted strictly requires exit code 0 AND verdict == VERIFIED
-          checkpoint_accepted = "true" if (reported_exit_code == 0 and verdict == "VERIFIED") else "false"
+          # Checkpoint acceptance strictly requires:
+          # 1. Structural validity without parse errors or contradiction
+          # 2. Real CLI process exit code == 0
+          # 3. JSON reported exit code == 0
+          # 4. Verdict is ASSESSED_PROVISIONAL_PASS
+          # 5. CI status is VERIFIED_PASS
+          checkpoint_accepted = "false"
+          if (
+              is_valid_assessment
+              and not contradiction
+              and cli_rc == 0
+              and effective_exit_code == 0
+              and verdict == "ASSESSED_PROVISIONAL_PASS"
+              and ci_status == "VERIFIED_PASS"
+          ):
+              checkpoint_accepted = "true"
 
           # Write Step Outputs
           if github_output:
               with open(github_output, "a", encoding="utf-8") as out:
                   out.write(f"verdict={verdict}\n")
-                  out.write(f"exit_code={reported_exit_code}\n")
+                  out.write(f"exit_code={effective_exit_code}\n")
+                  out.write(f"cli_rc={cli_rc}\n")
                   out.write(f"ci_status={ci_status}\n")
                   out.write(f"checkpoint_accepted={checkpoint_accepted}\n")
+                  out.write(f"is_valid_assessment={'true' if is_valid_assessment else 'false'}\n")
+
+          # Safe markdown escaping helpers
+          def sanitize_cell(val):
+              s = str(val) if val is not None else ""
+              s = html.escape(s)
+              return s.replace("|", "&#124;").replace("\n", " ").replace("\r", "")
+
+          def sanitize_block(val):
+              s = str(val) if val is not None else ""
+              return html.escape(s).replace("\r", "")
 
           # Write Structured GITHUB_STEP_SUMMARY
           summary = []
           summary.append("## Evidence Checkpoint Engine — Verification Summary\n")
           summary.append("| Parameter | Value |")
           summary.append("| :--- | :--- |")
-          summary.append(f"| **Gate Mode** | `{gate_mode}` |")
-          summary.append(f"| **Checkpoint Accepted** | `{checkpoint_accepted}` |")
-          summary.append(f"| **Engine Verdict** | **`{verdict}`** (Exit Code `{reported_exit_code}`) |")
-          summary.append(f"| **Target Repository** | `{target_owner}/{target_repo}` (ID: `{target_repo_id}`) |")
-          summary.append(f"| **Target Commit SHA** | `{target_commit}` |")
-          summary.append(f"| **Target Workflow Run** | Run `{target_run_id}` (Attempt `{target_attempt}`) |")
-          summary.append(f"| **Trusted Check Policy** | `{policy_selection}` |")
-          summary.append(f"| **ECE Verifier Source** | `{verifier_sha}` |\n")
+          summary.append(f"| **Gate Mode** | `{sanitize_cell(gate_mode)}` |")
+          summary.append(f"| **Checkpoint Accepted** | `{sanitize_cell(checkpoint_accepted)}` |")
+          summary.append(f"| **Engine Verdict** | **`{sanitize_cell(verdict)}`** (Exit Code `{sanitize_cell(effective_exit_code)}`, Process `{sanitize_cell(cli_rc)}`) |")
+          summary.append(f"| **Target Repository** | `{sanitize_cell(target_owner)}/{sanitize_cell(target_repo)}` (ID: `{sanitize_cell(target_repo_id)}`) |")
+          summary.append(f"| **Target Commit SHA** | `{sanitize_cell(target_commit)}` |")
+          summary.append(f"| **Target Workflow Run** | Run `{sanitize_cell(target_run_id)}` (Attempt `{sanitize_cell(target_attempt)}`) |")
+          summary.append(f"| **Trusted Check Policy** | `{sanitize_cell(policy_selection)}` |")
+          summary.append(f"| **ECE Verifier Source** | `{sanitize_cell(verifier_sha)}` |\n")
 
           summary.append("### Six-Dimensional Trust Status\n")
           summary.append("| Dimension | Status | Key Information |")
           summary.append("| :--- | :--- | :--- |")
 
           # 1. Evidence Integrity
-          ev_int = dimensions.get("evidence_integrity", {})
+          ev_int = dimensions.get("evidence_integrity", {}) if isinstance(dimensions, dict) else {}
           status_int = ev_int.get("status", "NOT_EVALUATED")
           details_int = ev_int.get("details", "")
-          summary.append(f"| **Evidence Integrity** | `{status_int}` | {details_int} |")
+          summary.append(f"| **Evidence Integrity** | `{sanitize_cell(status_int)}` | {sanitize_cell(details_int)} |")
 
           # 2. CI Execution
-          summary.append(f"| **CI Execution** | `{ci_status}` | {observed_jobs}/{expected_jobs} policy jobs observed completed with success |")
+          summary.append(f"| **CI Execution** | `{sanitize_cell(ci_status)}` | {sanitize_cell(observed_jobs)}/{sanitize_cell(expected_jobs)} policy jobs observed completed with success |")
 
           # 3. Evidence Availability
-          ev_avail = dimensions.get("evidence_availability", {})
+          ev_avail = dimensions.get("evidence_availability", {}) if isinstance(dimensions, dict) else {}
           status_avail = ev_avail.get("status", "NOT_PROVIDED")
-          summary.append(f"| **Evidence Availability** | `{status_avail}` | Provider artifacts verification |")
+          summary.append(f"| **Evidence Availability** | `{sanitize_cell(status_avail)}` | Provider artifacts verification |")
 
           # 4. Independent Review
-          rev = dimensions.get("review_status", {})
+          rev = dimensions.get("review_status", {}) if isinstance(dimensions, dict) else {}
           status_rev = rev.get("status", "UNREVIEWED")
           tier_rev = rev.get("tier", "NONE")
-          summary.append(f"| **Independent Review** | `{status_rev}` | Tier: `{tier_rev}` |")
+          summary.append(f"| **Independent Review** | `{sanitize_cell(status_rev)}` | Tier: `{sanitize_cell(tier_rev)}` |")
 
           # 5. Human Authorization
-          auth = dimensions.get("authorization", {})
+          auth = dimensions.get("authorization", {}) if isinstance(dimensions, dict) else {}
           status_auth = auth.get("status", "AUTHORIZATION_PENDING")
-          summary.append(f"| **Human Authorization** | `{status_auth}` | Owner decision pending |")
+          summary.append(f"| **Human Authorization** | `{sanitize_cell(status_auth)}` | Owner decision pending |")
 
           # 6. Freshness
-          fresh = dimensions.get("freshness", {})
+          fresh = dimensions.get("freshness", {}) if isinstance(dimensions, dict) else {}
           status_fresh = fresh.get("status", "HISTORICAL_BASELINE")
-          summary.append(f"| **Freshness** | `{status_fresh}` | Head SHA unpinned |")
+          summary.append(f"| **Freshness** | `{sanitize_cell(status_fresh)}` | Head SHA unpinned |")
 
-          blocking = derived.get("blocking_reasons", [])
-          warnings = derived.get("warnings", [])
+          blocking = derived.get("blocking_reasons", []) if isinstance(derived, dict) else []
+          warnings = derived.get("warnings", []) if isinstance(derived, dict) else []
 
-          if blocking:
+          if blocking and isinstance(blocking, list):
               summary.append("\n#### Blocking Reasons")
               for b in blocking:
-                  safe_b = str(b).replace("<", "&lt;").replace(">", "&gt;")
-                  summary.append(f"- ⚠️ {safe_b}")
+                  summary.append(f"- ⚠️ {sanitize_block(b)}")
 
-          if warnings:
+          if warnings and isinstance(warnings, list):
               summary.append("\n#### Warnings & Invariants")
               for w in warnings:
-                  safe_w = str(w).replace("<", "&lt;").replace(">", "&gt;")
-                  summary.append(f"- ℹ️ {safe_w}")
+                  summary.append(f"- ℹ️ {sanitize_block(w)}")
 
           if github_step_summary:
               with open(github_step_summary, "a", encoding="utf-8") as s:
@@ -388,21 +474,23 @@ jobs:
           GATE_MODE: ${{ inputs.gate_mode }}
           VERDICT: ${{ steps.parse_and_summarize.outputs.verdict }}
           EXIT_CODE: ${{ steps.parse_and_summarize.outputs.exit_code }}
+          CLI_RC: ${{ steps.parse_and_summarize.outputs.cli_rc }}
           CHECKPOINT_ACCEPTED: ${{ steps.parse_and_summarize.outputs.checkpoint_accepted }}
+          IS_VALID_ASSESSMENT: ${{ steps.parse_and_summarize.outputs.is_valid_assessment }}
         run: |
           set -euo pipefail
 
-          echo "Enforcing gate policy: mode='$GATE_MODE', verdict='$VERDICT', exit_code='$EXIT_CODE', accepted='$CHECKPOINT_ACCEPTED'"
+          echo "Enforcing gate policy: mode='$GATE_MODE', verdict='$VERDICT', exit_code='$EXIT_CODE', cli_rc='$CLI_RC', accepted='$CHECKPOINT_ACCEPTED', valid='$IS_VALID_ASSESSMENT'"
 
           if [ "$GATE_MODE" = "strict" ]; then
-            if [ "$EXIT_CODE" -ne 0 ]; then
-              echo "::error::Strict acceptance gate failed: ECE verifier emitted exit code $EXIT_CODE ($VERDICT). Checkpoint is NOT accepted."
+            if [ "$CHECKPOINT_ACCEPTED" != "true" ]; then
+              echo "::error::Strict acceptance gate failed: checkpoint is NOT accepted (verdict: $VERDICT, exit_code: $EXIT_CODE, cli_rc: $CLI_RC, accepted: $CHECKPOINT_ACCEPTED)."
               exit 1
             fi
-            echo "Strict acceptance gate satisfied: exit code 0."
+            echo "Strict acceptance gate satisfied: checkpoint accepted with verdict ASSESSED_PROVISIONAL_PASS."
           elif [ "$GATE_MODE" = "observation" ]; then
-            if [ "$EXIT_CODE" -eq 4 ]; then
-              echo "::error::Observation mode failed: operational error in verifier execution (exit code 4)."
+            if [ "$CLI_RC" -eq 4 ] || [ "$IS_VALID_ASSESSMENT" != "true" ]; then
+              echo "::error::Observation mode failed: operational error or invalid assessment (cli_rc: $CLI_RC, valid: $IS_VALID_ASSESSMENT)."
               exit 1
             fi
             echo "Observation mode: verification completed with exit code $EXIT_CODE ($VERDICT)."

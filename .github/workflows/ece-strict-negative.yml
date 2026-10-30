@@ -1,0 +1,51 @@
+name: ECE Strict Gate Negative Verification
+
+on:
+  push:
+    branches: [development]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  test-reusable-strict-pilot:
+    name: Execute Real Strict Gate against Historical Pilot
+    uses: ./.github/workflows/ece-verify-reusable.yml
+    with:
+      target_repo_id: "1432704795"
+      target_owner: "ErenTahiroglu"
+      target_repo: "Evidence-Checkpoint-Engine"
+      target_commit_sha: "415990746d5bbd3756f743b4b5a7673b36228567"
+      target_run_id: "40969401836"
+      target_run_attempt: 1
+      target_workflow_path: ".github/workflows/build-and-test.yml"
+      policy_selection: "ece-pilot-four-runner-matrix"
+      gate_mode: "strict"
+    secrets:
+      evidence_token: ${{ secrets.GITHUB_TOKEN }}
+
+  confirm-strict-gate-failure:
+    name: Confirm Strict Gate Failed Closed
+    needs: [test-reusable-strict-pilot]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Confirm expected strict gate rejection
+        env:
+          STRICT_RESULT: ${{ needs.test-reusable-strict-pilot.result }}
+        run: |
+          set -euo pipefail
+          echo "Strict reusable pilot job result: $STRICT_RESULT"
+
+          if [ "$STRICT_RESULT" != "failure" ]; then
+            echo "::error::Strict gate security failure: expected job result 'failure' for historical exit-1 run, got '$STRICT_RESULT'!"
+            exit 1
+          fi
+
+          echo "================================================================"
+          echo "CONFIRMED: Real strict reusable workflow failed closed as expected."
+          echo "Historical run 40969401836 produced exit code 1 (ASSESSED_LIMITATIONS)."
+          echo "Under gate_mode 'strict', checkpoint was NOT accepted."
+          echo "Strict gate enforcement exited 1, failing the caller job cleanly."
+          echo "================================================================"
