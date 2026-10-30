@@ -281,43 +281,40 @@ impl GitHubProvider for HttpGitHubClient {
         let mut all_jobs = Vec::new();
         let mut page = 1;
         let page_limit = 10;
-        let mut expected_total = None;
 
-        loop {
+        let total_count = loop {
             let url = format!(
                 "{}/repos/{}/{}/actions/runs/{}/attempts/{}/jobs?per_page=100&page={}",
                 self.base_url, owner, repo, run_id, attempt, page
             );
 
             let resp: GitHubJobsResponse = self.read_bounded_json(&url)?;
-            expected_total = Some(resp.total_count);
+            let total = resp.total_count;
             let count_on_page = resp.jobs.len();
 
             all_jobs.extend(resp.jobs);
 
-            if all_jobs.len() >= resp.total_count {
-                break;
+            if all_jobs.len() >= total {
+                break total;
             }
 
             if count_on_page == 0 || page >= page_limit {
-                return Err(GitHubClientError::IncompletePagination {
-                    retrieved: all_jobs.len(),
-                    total_count: resp.total_count,
-                    page_limit,
-                });
-            }
-
-            page += 1;
-        }
-
-        if let Some(total) = expected_total {
-            if all_jobs.len() != total {
                 return Err(GitHubClientError::IncompletePagination {
                     retrieved: all_jobs.len(),
                     total_count: total,
                     page_limit,
                 });
             }
+
+            page += 1;
+        };
+
+        if all_jobs.len() != total_count {
+            return Err(GitHubClientError::IncompletePagination {
+                retrieved: all_jobs.len(),
+                total_count,
+                page_limit,
+            });
         }
 
         Ok(all_jobs)
@@ -332,43 +329,40 @@ impl GitHubProvider for HttpGitHubClient {
         let mut all_artifacts = Vec::new();
         let mut page = 1;
         let page_limit = 10;
-        let mut expected_total = None;
 
-        loop {
+        let total_count = loop {
             let url = format!(
                 "{}/repos/{}/{}/actions/runs/{}/artifacts?per_page=100&page={}",
                 self.base_url, owner, repo, run_id, page
             );
 
             let resp: GitHubArtifactsResponse = self.read_bounded_json(&url)?;
-            expected_total = Some(resp.total_count);
+            let total = resp.total_count;
             let count_on_page = resp.artifacts.len();
 
             all_artifacts.extend(resp.artifacts);
 
-            if all_artifacts.len() >= resp.total_count {
-                break;
+            if all_artifacts.len() >= total {
+                break total;
             }
 
             if count_on_page == 0 || page >= page_limit {
-                return Err(GitHubClientError::IncompletePagination {
-                    retrieved: all_artifacts.len(),
-                    total_count: resp.total_count,
-                    page_limit,
-                });
-            }
-
-            page += 1;
-        }
-
-        if let Some(total) = expected_total {
-            if all_artifacts.len() != total {
                 return Err(GitHubClientError::IncompletePagination {
                     retrieved: all_artifacts.len(),
                     total_count: total,
                     page_limit,
                 });
             }
+
+            page += 1;
+        };
+
+        if all_artifacts.len() != total_count {
+            return Err(GitHubClientError::IncompletePagination {
+                retrieved: all_artifacts.len(),
+                total_count,
+                page_limit,
+            });
         }
 
         Ok(all_artifacts)
