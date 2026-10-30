@@ -86,9 +86,8 @@ pub fn evaluate_github_evidence(
                 true,
             )
         } else {
-            checks_omitted.push(
-                "Envelope digest verification (bypassed for bare payload input)".to_string(),
-            );
+            checks_omitted
+                .push("Envelope digest verification (bypassed for bare payload input)".to_string());
             warnings.push(
                 "BARE_PAYLOAD_EVIDENCE: Envelope digest verification was omitted; \
                  evaluating bare checkpoint payload"
@@ -397,12 +396,7 @@ pub fn evaluate_github_evidence(
                                 art.name, art.id
                             ));
                         } else if declared.verify_bytes {
-                            if declared
-                                .expected_digest
-                                .as_deref()
-                                .unwrap_or("")
-                                .is_empty()
-                            {
+                            if declared.expected_digest.as_deref().unwrap_or("").is_empty() {
                                 warnings.push(format!(
                                     "Artifact '{}' requested byte verification but \
                                      expected_digest was empty or missing",

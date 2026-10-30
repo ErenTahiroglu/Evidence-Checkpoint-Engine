@@ -387,10 +387,7 @@ mod tests {
     fn test_policy_target_scope_validation() {
         let policy = TrustedCheckPolicy::ece_pilot_policy();
         assert!(policy
-            .validate_target_scope(
-                "1432704795",
-                Some(".github/workflows/build-and-test.yml")
-            )
+            .validate_target_scope("1432704795", Some(".github/workflows/build-and-test.yml"))
             .is_ok());
 
         let err_repo = policy

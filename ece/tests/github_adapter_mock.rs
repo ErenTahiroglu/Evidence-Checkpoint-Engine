@@ -7,8 +7,8 @@ use ece_lib::github::models::{
 };
 use ece_lib::github::policy::TrustedCheckPolicy;
 use ece_lib::github::{
-    evaluate_github_evidence, DeclaredArtifactSpec, EnvelopeVerificationContext, MockGitHubProvider,
-    TargetEvidenceRequest,
+    evaluate_github_evidence, DeclaredArtifactSpec, EnvelopeVerificationContext,
+    MockGitHubProvider, TargetEvidenceRequest,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -721,16 +721,14 @@ fn test_17_verified_envelope_context() {
     provider.artifacts_result = Some(Ok(Vec::new()));
 
     let ctx = EnvelopeVerificationContext {
-        envelope_digest:
-            "sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
-                .to_string(),
+        envelope_digest: "sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
+            .to_string(),
         is_digest_verified: true,
         is_envelope: true,
     };
 
-    let output =
-        evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
-            .expect("valid evaluation");
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
+        .expect("valid evaluation");
     assert_eq!(output.exit_code, 1);
     assert_eq!(
         output.assessment["dimensions"]["evidence_integrity"]["status"],
@@ -775,9 +773,8 @@ fn test_18_bare_payload_context() {
         is_envelope: false,
     };
 
-    let output =
-        evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
-            .expect("valid evaluation");
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
+        .expect("valid evaluation");
     assert_eq!(output.exit_code, 1);
     assert_eq!(
         output.assessment["dimensions"]["evidence_integrity"]["status"],
@@ -984,9 +981,10 @@ fn test_23_policy_scope_mismatch() {
     let reasons = output.assessment["derived_summary"]["blocking_reasons"]
         .as_array()
         .unwrap();
-    assert!(reasons
-        .iter()
-        .any(|r| r.as_str().unwrap().contains("Policy target workflow mismatch")));
+    assert!(reasons.iter().any(|r| r
+        .as_str()
+        .unwrap()
+        .contains("Policy target workflow mismatch")));
 }
 
 #[test]
