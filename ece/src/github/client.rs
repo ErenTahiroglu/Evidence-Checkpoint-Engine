@@ -51,6 +51,16 @@ pub enum GitHubClientError {
 
     #[error("Empty response from GitHub API")]
     EmptyResponse,
+
+    #[error(
+        "Incomplete pagination: retrieved {retrieved} items, \
+         expected {total_count} (page limit {page_limit})"
+    )]
+    IncompletePagination {
+        retrieved: usize,
+        total_count: usize,
+        page_limit: u32,
+    },
 }
 
 pub trait GitHubProvider: Send + Sync {
@@ -270,6 +280,8 @@ impl GitHubProvider for HttpGitHubClient {
     ) -> Result<Vec<GitHubJob>, GitHubClientError> {
         let mut all_jobs = Vec::new();
         let mut page = 1;
+        let page_limit = 10;
+        let mut expected_total = None;
 
         loop {
             let url = format!(
@@ -278,16 +290,34 @@ impl GitHubProvider for HttpGitHubClient {
             );
 
             let resp: GitHubJobsResponse = self.read_bounded_json(&url)?;
-            let total = resp.total_count;
+            expected_total = Some(resp.total_count);
             let count_on_page = resp.jobs.len();
 
             all_jobs.extend(resp.jobs);
 
-            if all_jobs.len() >= total || count_on_page == 0 || page >= 10 {
+            if all_jobs.len() >= resp.total_count {
                 break;
             }
 
+            if count_on_page == 0 || page >= page_limit {
+                return Err(GitHubClientError::IncompletePagination {
+                    retrieved: all_jobs.len(),
+                    total_count: resp.total_count,
+                    page_limit,
+                });
+            }
+
             page += 1;
+        }
+
+        if let Some(total) = expected_total {
+            if all_jobs.len() != total {
+                return Err(GitHubClientError::IncompletePagination {
+                    retrieved: all_jobs.len(),
+                    total_count: total,
+                    page_limit,
+                });
+            }
         }
 
         Ok(all_jobs)
@@ -301,6 +331,8 @@ impl GitHubProvider for HttpGitHubClient {
     ) -> Result<Vec<GitHubArtifact>, GitHubClientError> {
         let mut all_artifacts = Vec::new();
         let mut page = 1;
+        let page_limit = 10;
+        let mut expected_total = None;
 
         loop {
             let url = format!(
@@ -309,16 +341,34 @@ impl GitHubProvider for HttpGitHubClient {
             );
 
             let resp: GitHubArtifactsResponse = self.read_bounded_json(&url)?;
-            let total = resp.total_count;
+            expected_total = Some(resp.total_count);
             let count_on_page = resp.artifacts.len();
 
             all_artifacts.extend(resp.artifacts);
 
-            if all_artifacts.len() >= total || count_on_page == 0 || page >= 10 {
+            if all_artifacts.len() >= resp.total_count {
                 break;
             }
 
+            if count_on_page == 0 || page >= page_limit {
+                return Err(GitHubClientError::IncompletePagination {
+                    retrieved: all_artifacts.len(),
+                    total_count: resp.total_count,
+                    page_limit,
+                });
+            }
+
             page += 1;
+        }
+
+        if let Some(total) = expected_total {
+            if all_artifacts.len() != total {
+                return Err(GitHubClientError::IncompletePagination {
+                    retrieved: all_artifacts.len(),
+                    total_count: total,
+                    page_limit,
+                });
+            }
         }
 
         Ok(all_artifacts)

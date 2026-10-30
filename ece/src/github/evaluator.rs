@@ -22,6 +22,13 @@ pub struct DeclaredArtifactSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvelopeVerificationContext {
+    pub envelope_digest: String,
+    pub is_digest_verified: bool,
+    pub is_envelope: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetEvidenceRequest {
     pub owner: String,
     pub repo: String,
@@ -41,19 +48,77 @@ pub fn evaluate_github_evidence(
     target: &TargetEvidenceRequest,
     policy: &TrustedCheckPolicy,
     schema_dir: &Path,
+    envelope_ctx: Option<&EnvelopeVerificationContext>,
 ) -> Result<VerificationOutput, VerifierError> {
     let store = SchemaStore::load(schema_dir)?;
     let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let assessment_id = format!("ece-eval-{}", Uuid::new_v4());
 
     let mut checks_performed = Vec::new();
-    let checks_omitted = vec![
+    let mut checks_omitted = vec![
         "Independent human authorization (out of scope for CI adapter)".to_string(),
         "Physical device execution (hosted CI runners only, not bare-metal hardware)".to_string(),
         "Cryptographic GPG commit signature verification (commit is unsigned)".to_string(),
     ];
     let mut blocking_reasons = Vec::new();
     let mut warnings = Vec::new();
+
+    let (
+        evidence_integrity_status,
+        digest_match,
+        integrity_details,
+        digest_verified,
+        schema_conformant,
+    ) = if let Some(ctx) = envelope_ctx {
+        if ctx.is_envelope && ctx.is_digest_verified {
+            checks_performed.push(format!(
+                "RFC 8785 envelope digest verification ({})",
+                ctx.envelope_digest
+            ));
+            (
+                "VALID",
+                true,
+                format!(
+                    "Envelope RFC 8785 digest {} verified; GitHub REST API evidence evaluated",
+                    ctx.envelope_digest
+                ),
+                true,
+                true,
+            )
+        } else {
+            checks_omitted.push(
+                "Envelope digest verification (bypassed for bare payload input)".to_string(),
+            );
+            warnings.push(
+                "BARE_PAYLOAD_EVIDENCE: Envelope digest verification was omitted; \
+                 evaluating bare checkpoint payload"
+                    .to_string(),
+            );
+            (
+                "NOT_EVALUATED",
+                false,
+                "Envelope digest check omitted (bare payload input)".to_string(),
+                false,
+                true,
+            )
+        }
+    } else {
+        checks_omitted.push(
+            "Envelope digest verification (omitted in standalone run assessment)".to_string(),
+        );
+        warnings.push(
+            "STANDALONE_RUN_ASSESSMENT: Envelope digest verification was omitted; \
+             CI facts evaluated directly from GitHub REST API"
+                .to_string(),
+        );
+        (
+            "NOT_EVALUATED",
+            false,
+            "Envelope digest check omitted (run assessment mode)".to_string(),
+            false,
+            false,
+        )
+    };
 
     let mut sha_verified = false;
     let mut repo_id_matched = false;
@@ -144,11 +209,21 @@ pub fn evaluate_github_evidence(
         }
     }
 
-    // Verify run attempt
-    if run.run_attempt != target.run_attempt {
+    // Verify run attempt semantics
+    if target.run_attempt == 0 {
+        ci_status = "ATTEMPT_MISMATCH";
+        blocking_reasons.push(
+            "Invalid run attempt number: requested attempt is 0 (attempts are 1-based)".to_string(),
+        );
+    } else if target.run_attempt > run.run_attempt {
         ci_status = "ATTEMPT_MISMATCH";
         blocking_reasons.push(format!(
-            "Run attempt mismatch: declared attempt {} but provider run attempt is {}",
+            "Run attempt mismatch: requested attempt {} exceeds latest provider run attempt {}",
+            target.run_attempt, run.run_attempt
+        ));
+    } else if target.run_attempt < run.run_attempt {
+        warnings.push(format!(
+            "Evaluating historical run attempt {} (latest run attempt is {})",
             target.run_attempt, run.run_attempt
         ));
     }
@@ -172,6 +247,13 @@ pub fn evaluate_github_evidence(
                 ));
             }
         }
+    }
+
+    // Verify target scope against policy
+    if let Err(scope_err) =
+        policy.validate_target_scope(&target.expected_repo_id, run.path.as_deref())
+    {
+        blocking_reasons.push(scope_err);
     }
 
     // Verify run overall status and conclusion
@@ -258,91 +340,124 @@ pub fn evaluate_github_evidence(
             ci_status = "FAILED";
             unresolved_jobs = eval.conflicting_jobs.clone();
             blocking_reasons.push(format!(
-                "Duplicate executions with conflicting conclusions: {:?}",
+                "Ambiguous duplicate executions observed in run attempt: {:?}",
                 eval.conflicting_jobs
             ));
         }
         PolicyStatus::UntrustedPolicy => {
             ci_status = "UNVERIFIED_RUN";
-            warnings.push("Trusted policy has zero required jobs; CI unverified".to_string());
+            blocking_reasons.push(format!(
+                "Trusted check policy is invalid or untrusted: {:?}",
+                eval.details
+            ));
         }
     }
 
     // 6. Artifact Verification
     checks_performed.push("GitHub REST API artifact metadata inspection".to_string());
     let artifacts_res = provider.get_artifacts(&target.owner, &target.repo, target.run_id);
-    let observed_artifacts = artifacts_res.unwrap_or_default();
 
-    let evidence_availability_status = if target.declared_artifacts.is_empty() {
-        "NOT_PROVIDED"
-    } else {
-        let mut all_found = true;
-        let mut any_found = false;
+    let evidence_availability_status = match artifacts_res {
+        Err(e) => {
+            if target.declared_artifacts.is_empty() {
+                warnings.push(format!(
+                    "GitHub REST API artifact lookup returned error: {e}"
+                ));
+                "NOT_PROVIDED"
+            } else {
+                blocking_reasons.push(format!(
+                    "GitHub REST API artifact metadata lookup failed: {e}"
+                ));
+                "UNREACHABLE"
+            }
+        }
+        Ok(observed_artifacts) => {
+            if target.declared_artifacts.is_empty() {
+                "NOT_PROVIDED"
+            } else {
+                let mut all_found = true;
+                let mut any_found = false;
 
-        for declared in &target.declared_artifacts {
-            let matched_artifact: Option<&GitHubArtifact> = observed_artifacts.iter().find(|a| {
-                if let Some(id) = declared.artifact_id {
-                    a.id == id
-                } else {
-                    a.name == declared.artifact_name
-                }
-            });
+                for declared in &target.declared_artifacts {
+                    let matched_artifact: Option<&GitHubArtifact> =
+                        observed_artifacts.iter().find(|a| {
+                            if let Some(id) = declared.artifact_id {
+                                a.id == id
+                            } else {
+                                a.name == declared.artifact_name
+                            }
+                        });
 
-            if let Some(art) = matched_artifact {
-                any_found = true;
-                if art.expired {
-                    expired_references.push(art.name.clone());
-                    blocking_reasons.push(format!(
-                        "Artifact '{}' (id={}) is expired",
-                        art.name, art.id
-                    ));
-                } else if declared.verify_bytes {
-                    checks_performed.push(format!(
-                        "Artifact byte digest verification for '{}'",
-                        art.name
-                    ));
-                    match provider.download_artifact_digest(
-                        &target.owner,
-                        &target.repo,
-                        art.id,
-                        10 * 1024 * 1024,
-                    ) {
-                        Ok(computed) => {
-                            if let Some(ref expected) = declared.expected_digest {
-                                if computed.to_lowercase() != expected.to_lowercase() {
-                                    blocking_reasons.push(format!(
-                                        "Artifact '{}' digest mismatch: exp '{}', got '{}'",
-                                        art.name, expected, computed
-                                    ));
+                    if let Some(art) = matched_artifact {
+                        any_found = true;
+                        if art.expired {
+                            expired_references.push(art.name.clone());
+                            blocking_reasons.push(format!(
+                                "Artifact '{}' (id={}) is expired in GitHub Actions storage",
+                                art.name, art.id
+                            ));
+                        } else if declared.verify_bytes {
+                            if declared
+                                .expected_digest
+                                .as_deref()
+                                .unwrap_or("")
+                                .is_empty()
+                            {
+                                warnings.push(format!(
+                                    "Artifact '{}' requested byte verification but \
+                                     expected_digest was empty or missing",
+                                    art.name
+                                ));
+                            } else {
+                                checks_performed.push(format!(
+                                    "Artifact byte digest verification for '{}'",
+                                    art.name
+                                ));
+                                match provider.download_artifact_digest(
+                                    &target.owner,
+                                    &target.repo,
+                                    art.id,
+                                    10 * 1024 * 1024,
+                                ) {
+                                    Ok(computed) => {
+                                        if let Some(ref expected) = declared.expected_digest {
+                                            if computed.to_lowercase() != expected.to_lowercase() {
+                                                blocking_reasons.push(format!(
+                                                    "Artifact '{}' digest mismatch: \
+                                                     exp '{}', got '{}'",
+                                                    art.name, expected, computed
+                                                ));
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        blocking_reasons.push(format!(
+                                            "Failed to download and verify artifact '{}': {}",
+                                            art.name, e
+                                        ));
+                                    }
                                 }
                             }
                         }
-                        Err(e) => {
-                            blocking_reasons.push(format!(
-                                "Failed to download and verify artifact '{}': {}",
-                                art.name, e
-                            ));
-                        }
+                    } else {
+                        all_found = false;
+                        blocking_reasons.push(format!(
+                            "Declared artifact '{}' was not found in provider run artifacts",
+                            declared.artifact_name
+                        ));
                     }
                 }
-            } else {
-                all_found = false;
-                expired_references.push(declared.artifact_name.clone());
-                blocking_reasons.push(format!(
-                    "Declared artifact '{}' was not found in provider run artifacts",
-                    declared.artifact_name
-                ));
-            }
-        }
 
-        if !expired_references.is_empty() {
-            "EXPIRED"
-        } else if all_found {
-            "AVAILABLE"
-        } else if any_found {
-            "PARTIALLY_AVAILABLE"
-        } else {
-            "UNREACHABLE"
+                if !expired_references.is_empty() {
+                    "EXPIRED"
+                } else if all_found {
+                    "AVAILABLE"
+                } else if any_found {
+                    "PARTIALLY_AVAILABLE"
+                } else {
+                    "UNREACHABLE"
+                }
+            }
         }
     };
 
@@ -383,9 +498,9 @@ pub fn evaluate_github_evidence(
         },
         "dimensions": {
             "evidence_integrity": {
-                "status": "VALID",
-                "digest_match": true,
-                "details": "GitHub REST API evidence collection and evaluation"
+                "status": evidence_integrity_status,
+                "digest_match": digest_match,
+                "details": integrity_details
             },
             "ci_execution": {
                 "status": ci_status,
@@ -427,8 +542,8 @@ pub fn evaluate_github_evidence(
             "machine_assessed": {
                 "sha_verified": sha_verified,
                 "repo_id_matched": repo_id_matched,
-                "schema_conformant": true,
-                "digest_verified": true
+                "schema_conformant": schema_conformant,
+                "digest_verified": digest_verified
             },
             "independently_reviewed": {
                 "review_verdict": "NOT_EVALUATED",
@@ -533,7 +648,7 @@ fn build_api_failure_assessment(
             "machine_assessed": {
                 "sha_verified": false,
                 "repo_id_matched": false,
-                "schema_conformant": true,
+                "schema_conformant": false,
                 "digest_verified": false
             },
             "independently_reviewed": {

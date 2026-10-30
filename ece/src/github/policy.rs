@@ -11,6 +11,10 @@ pub struct TrustedCheckPolicy {
     pub required_jobs: Vec<String>,
     #[serde(default = "default_true")]
     pub allow_extra_jobs: bool,
+    #[serde(default)]
+    pub target_repo_id: Option<String>,
+    #[serde(default)]
+    pub target_workflow_path: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -43,9 +47,17 @@ pub struct CheckPolicyEvaluation {
 }
 
 impl TrustedCheckPolicy {
-    pub fn new(policy_id: impl Into<String>, required_jobs: Vec<String>) -> Self {
+    pub fn new(
+        policy_id: impl Into<String>,
+        required_jobs: Vec<String>,
+        target_repo_id: Option<String>,
+        target_workflow_path: Option<String>,
+    ) -> Self {
         let policy_id = policy_id.into();
-        let digest_input = format!("{}:{:?}", policy_id, required_jobs);
+        let digest_input = format!(
+            "{}:{:?}:{:?}:{:?}",
+            policy_id, required_jobs, target_repo_id, target_workflow_path
+        );
         let hash = Sha256::digest(digest_input.as_bytes());
         let policy_digest = hex::encode(hash);
 
@@ -54,6 +66,8 @@ impl TrustedCheckPolicy {
             policy_digest,
             required_jobs,
             allow_extra_jobs: true,
+            target_repo_id,
+            target_workflow_path,
         }
     }
 
@@ -67,7 +81,35 @@ impl TrustedCheckPolicy {
                 "Windows x64".to_string(),
                 "macOS Intel x64".to_string(),
             ],
+            Some("1432704795".to_string()),
+            Some(".github/workflows/build-and-test.yml".to_string()),
         )
+    }
+
+    pub fn validate_target_scope(
+        &self,
+        repo_id: &str,
+        workflow_path: Option<&str>,
+    ) -> Result<(), String> {
+        if let Some(ref expected_repo) = self.target_repo_id {
+            if expected_repo != repo_id {
+                return Err(format!(
+                    "Policy target repo mismatch: expected repo ID '{}', got '{}'",
+                    expected_repo, repo_id
+                ));
+            }
+        }
+        if let Some(ref expected_wf) = self.target_workflow_path {
+            if let Some(actual_wf) = workflow_path {
+                if expected_wf != actual_wf {
+                    return Err(format!(
+                        "Policy target workflow mismatch: expected '{}', got '{}'",
+                        expected_wf, actual_wf
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn evaluate_jobs(&self, observed_jobs: &[GitHubJob]) -> CheckPolicyEvaluation {
@@ -84,6 +126,26 @@ impl TrustedCheckPolicy {
                 conflicting_jobs: Vec::new(),
                 details: vec!["Trusted check policy defines zero required jobs".to_string()],
             };
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        for req in &self.required_jobs {
+            if !seen.insert(req) {
+                return CheckPolicyEvaluation {
+                    status: PolicyStatus::UntrustedPolicy,
+                    expected_jobs_count: self.required_jobs.len(),
+                    observed_jobs_count: observed_jobs.len(),
+                    passed_jobs: Vec::new(),
+                    failed_jobs: Vec::new(),
+                    skipped_or_cancelled_jobs: Vec::new(),
+                    missing_jobs: Vec::new(),
+                    in_progress_jobs: Vec::new(),
+                    conflicting_jobs: vec![req.clone()],
+                    details: vec![format!(
+                        "Trusted check policy contains duplicate required job '{req}'"
+                    )],
+                };
+            }
         }
 
         let mut passed_jobs = Vec::new();
@@ -106,19 +168,15 @@ impl TrustedCheckPolicy {
                 continue;
             }
 
-            // Check if duplicate entries have conflicting conclusions
+            // Reject ambiguous duplicate executions in attempt
             if matches.len() > 1 {
-                let first_conc = matches[0].conclusion.as_deref();
-                let has_conflict = matches
-                    .iter()
-                    .any(|m| m.conclusion.as_deref() != first_conc);
-                if has_conflict {
-                    conflicting_jobs.push(req.clone());
-                    details.push(format!(
-                        "Job '{req}' has duplicate executions with conflicting conclusions"
-                    ));
-                    continue;
-                }
+                conflicting_jobs.push(req.clone());
+                details.push(format!(
+                    "Job '{req}' has ambiguous duplicate executions in attempt \
+                     (observed {} instances)",
+                    matches.len()
+                ));
+                continue;
             }
 
             let job = matches[0];
@@ -292,5 +350,57 @@ mod tests {
         let eval = policy.evaluate_jobs(&jobs);
         assert_eq!(eval.status, PolicyStatus::AmbiguousDuplicated);
         assert_eq!(eval.conflicting_jobs, vec!["Linux x64"]);
+    }
+
+    #[test]
+    fn test_policy_identical_duplicates() {
+        let policy = TrustedCheckPolicy::ece_pilot_policy();
+        let jobs = vec![
+            make_job("Linux x64", "completed", Some("success")),
+            make_job("Linux x64", "completed", Some("success")),
+            make_job("macOS ARM64", "completed", Some("success")),
+            make_job("Windows x64", "completed", Some("success")),
+            make_job("macOS Intel x64", "completed", Some("success")),
+        ];
+
+        let eval = policy.evaluate_jobs(&jobs);
+        assert_eq!(eval.status, PolicyStatus::AmbiguousDuplicated);
+        assert_eq!(eval.conflicting_jobs, vec!["Linux x64"]);
+    }
+
+    #[test]
+    fn test_policy_duplicate_required_in_definition() {
+        let policy = TrustedCheckPolicy::new(
+            "bad-policy",
+            vec!["Linux x64".to_string(), "Linux x64".to_string()],
+            None,
+            None,
+        );
+        let jobs = vec![make_job("Linux x64", "completed", Some("success"))];
+
+        let eval = policy.evaluate_jobs(&jobs);
+        assert_eq!(eval.status, PolicyStatus::UntrustedPolicy);
+        assert_eq!(eval.conflicting_jobs, vec!["Linux x64"]);
+    }
+
+    #[test]
+    fn test_policy_target_scope_validation() {
+        let policy = TrustedCheckPolicy::ece_pilot_policy();
+        assert!(policy
+            .validate_target_scope(
+                "1432704795",
+                Some(".github/workflows/build-and-test.yml")
+            )
+            .is_ok());
+
+        let err_repo = policy
+            .validate_target_scope("99999", Some(".github/workflows/build-and-test.yml"))
+            .unwrap_err();
+        assert!(err_repo.contains("Policy target repo mismatch"));
+
+        let err_wf = policy
+            .validate_target_scope("1432704795", Some(".github/workflows/other.yml"))
+            .unwrap_err();
+        assert!(err_wf.contains("Policy target workflow mismatch"));
     }
 }

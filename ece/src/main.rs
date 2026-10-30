@@ -2,11 +2,13 @@
 
 use clap::{Parser, Subcommand};
 use ece_lib::github::{
-    evaluate_github_evidence, DeclaredArtifactSpec, HttpGitHubClient, TargetEvidenceRequest,
-    TrustedCheckPolicy,
+    evaluate_github_evidence, DeclaredArtifactSpec, EnvelopeVerificationContext, HttpGitHubClient,
+    TargetEvidenceRequest, TrustedCheckPolicy,
 };
 use ece_lib::verifier::{
-    default_schema_dir, inspect_payload, verify_envelope, VerificationOutput, MAX_INPUT_BYTES,
+    build_assessment_digest_fail, build_assessment_refused, default_schema_dir, inspect_payload,
+    parse_bounded_json, validate_and_wrap, verify_envelope, verify_envelope_digest, SchemaStore,
+    VerificationOutput, VerifierError, MAX_INPUT_BYTES,
 };
 use std::fs::File;
 use std::io::{self, Read};
@@ -317,6 +319,31 @@ fn extract_target_from_json(
     })
 }
 
+fn print_and_exit(mode_str: &str, output: VerificationOutput) -> ! {
+    match serde_json::to_string_pretty(&output.assessment) {
+        Ok(json_str) => {
+            println!("{json_str}");
+        }
+        Err(e) => {
+            eprintln!("ECE_INTERNAL_ERROR: Failed to serialize assessment output: {e}");
+            std::process::exit(4);
+        }
+    }
+
+    let verdict = output
+        .assessment
+        .pointer("/derived_summary/verdict")
+        .and_then(|v| v.as_str())
+        .unwrap_or("UNKNOWN");
+
+    eprintln!(
+        "ECE: mode={} verdict={} exit_code={}",
+        mode_str, verdict, output.exit_code
+    );
+
+    std::process::exit(output.exit_code);
+}
+
 fn main() {
     let cli = Cli::parse();
     let schema_dir = resolve_schema_dir(cli.schema_dir);
@@ -363,6 +390,13 @@ fn main() {
             token,
         } => {
             mode_str = "verify-github-evidence";
+            let store = match SchemaStore::load(&schema_dir) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", e.class(), e);
+                    std::process::exit(e.exit_code());
+                }
+            };
             let input_bytes = match read_bounded_input(&input) {
                 Ok(b) => b,
                 Err((msg, code)) => {
@@ -370,13 +404,76 @@ fn main() {
                     std::process::exit(code);
                 }
             };
-            let parsed_json: serde_json::Value = match serde_json::from_slice(&input_bytes) {
+            let parsed_json = match parse_bounded_json(&input_bytes) {
                 Ok(v) => v,
                 Err(e) => {
-                    eprintln!("ECE_OPERATIONAL_ERROR: Malformed input JSON: {e}");
-                    std::process::exit(3);
+                    let out = build_assessment_refused(&e, None);
+                    let wrapped = validate_and_wrap(&store, out).unwrap_or_else(|we| {
+                        eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", we.class(), we);
+                        std::process::exit(we.exit_code());
+                    });
+                    print_and_exit(mode_str, wrapped);
                 }
             };
+
+            let is_envelope = parsed_json.get("envelope_manifest_digest").is_some()
+                && parsed_json.get("payload").is_some();
+
+            let envelope_ctx = if is_envelope {
+                if let Err(e) = store.validate_envelope(&parsed_json) {
+                    let payload = parsed_json.get("payload");
+                    let out = build_assessment_refused(&e, payload);
+                    let wrapped = validate_and_wrap(&store, out).unwrap_or_else(|we| {
+                        eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", we.class(), we);
+                        std::process::exit(we.exit_code());
+                    });
+                    print_and_exit(mode_str, wrapped);
+                }
+
+                let digest = match verify_envelope_digest(&parsed_json) {
+                    Ok(d) => d,
+                    Err(VerifierError::DigestMismatch { expected, computed }) => {
+                        let payload = parsed_json.get("payload").unwrap_or(&parsed_json);
+                        let out = build_assessment_digest_fail(payload, &expected, &computed);
+                        let wrapped = validate_and_wrap(&store, out).unwrap_or_else(|we| {
+                            eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", we.class(), we);
+                            std::process::exit(we.exit_code());
+                        });
+                        print_and_exit(mode_str, wrapped);
+                    }
+                    Err(e) => {
+                        let payload = parsed_json.get("payload");
+                        let out = build_assessment_refused(&e, payload);
+                        let wrapped = validate_and_wrap(&store, out).unwrap_or_else(|we| {
+                            eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", we.class(), we);
+                            std::process::exit(we.exit_code());
+                        });
+                        print_and_exit(mode_str, wrapped);
+                    }
+                };
+
+                EnvelopeVerificationContext {
+                    envelope_digest: digest,
+                    is_digest_verified: true,
+                    is_envelope: true,
+                }
+            } else {
+                if let Err(e) = store.validate_payload(&parsed_json) {
+                    let out = build_assessment_refused(&e, Some(&parsed_json));
+                    let wrapped = validate_and_wrap(&store, out).unwrap_or_else(|we| {
+                        eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", we.class(), we);
+                        std::process::exit(we.exit_code());
+                    });
+                    print_and_exit(mode_str, wrapped);
+                }
+
+                EnvelopeVerificationContext {
+                    envelope_digest: String::new(),
+                    is_digest_verified: false,
+                    is_envelope: false,
+                }
+            };
+
             let target = match extract_target_from_json(&parsed_json) {
                 Ok(t) => t,
                 Err((msg, code)) => {
@@ -398,7 +495,13 @@ fn main() {
                     std::process::exit(4);
                 }
             };
-            match evaluate_github_evidence(&client, &target, &policy, &schema_dir) {
+            match evaluate_github_evidence(
+                &client,
+                &target,
+                &policy,
+                &schema_dir,
+                Some(&envelope_ctx),
+            ) {
                 Ok(out) => out,
                 Err(e) => {
                     eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", e.class(), e);
@@ -444,7 +547,7 @@ fn main() {
                     std::process::exit(4);
                 }
             };
-            match evaluate_github_evidence(&client, &target, &policy, &schema_dir) {
+            match evaluate_github_evidence(&client, &target, &policy, &schema_dir, None) {
                 Ok(out) => out,
                 Err(e) => {
                     eprintln!("ECE_OPERATIONAL_ERROR: [{}] {}", e.class(), e);
@@ -454,28 +557,5 @@ fn main() {
         }
     };
 
-    // Emit structured assessment JSON to stdout
-    match serde_json::to_string_pretty(&output.assessment) {
-        Ok(json_str) => {
-            println!("{json_str}");
-        }
-        Err(e) => {
-            eprintln!("ECE_INTERNAL_ERROR: Failed to serialize assessment output: {e}");
-            std::process::exit(4);
-        }
-    }
-
-    // Diagnostics to stderr
-    let verdict = output
-        .assessment
-        .pointer("/derived_summary/verdict")
-        .and_then(|v| v.as_str())
-        .unwrap_or("UNKNOWN");
-
-    eprintln!(
-        "ECE: mode={} verdict={} exit_code={}",
-        mode_str, verdict, output.exit_code
-    );
-
-    std::process::exit(output.exit_code);
+    print_and_exit(mode_str, output);
 }

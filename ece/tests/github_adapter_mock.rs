@@ -7,7 +7,8 @@ use ece_lib::github::models::{
 };
 use ece_lib::github::policy::TrustedCheckPolicy;
 use ece_lib::github::{
-    evaluate_github_evidence, DeclaredArtifactSpec, MockGitHubProvider, TargetEvidenceRequest,
+    evaluate_github_evidence, DeclaredArtifactSpec, EnvelopeVerificationContext, MockGitHubProvider,
+    TargetEvidenceRequest,
 };
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -150,7 +151,7 @@ fn test_01_correct_repository_and_run() {
     provider.jobs_result = Some(Ok(sample_jobs()));
     provider.artifacts_result = Some(Ok(Vec::new()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 1); // ASSESSED_LIMITATIONS
     assert_eq!(
@@ -168,6 +169,22 @@ fn test_01_correct_repository_and_run() {
     assert_eq!(
         output.assessment["claims_breakdown"]["machine_assessed"]["sha_verified"],
         true
+    );
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["status"],
+        "NOT_EVALUATED"
+    );
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["digest_match"],
+        false
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["digest_verified"],
+        false
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["schema_conformant"],
+        false
     );
 }
 
@@ -189,7 +206,7 @@ fn test_02_wrong_repository_id() {
     )));
     provider.jobs_result = Some(Ok(sample_jobs()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2); // ASSESSED_FAIL
     assert_eq!(
@@ -223,7 +240,7 @@ fn test_03_wrong_sha() {
     )));
     provider.jobs_result = Some(Ok(sample_jobs()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -255,7 +272,7 @@ fn test_04_wrong_run_attempt() {
     )));
     provider.jobs_result = Some(Ok(sample_jobs()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -289,7 +306,7 @@ fn test_05_missing_required_job() {
     )));
     provider.jobs_result = Some(Ok(jobs));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -331,7 +348,7 @@ fn test_06_failed_required_job() {
     )));
     provider.jobs_result = Some(Ok(jobs));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -373,7 +390,7 @@ fn test_07_skipped_or_cancelled_required_job() {
     )));
     provider.jobs_result = Some(Ok(jobs));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -408,7 +425,7 @@ fn test_08_in_progress_run() {
     )));
     provider.jobs_result = Some(Ok(sample_jobs()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -425,7 +442,7 @@ fn test_08_in_progress_run() {
 fn test_09_untrusted_empty_policy() {
     let schema_dir = resolve_schema_dir();
     let target = pilot_target();
-    let policy = TrustedCheckPolicy::new("empty-untrusted-policy", vec![]); // Zero required checks
+    let policy = TrustedCheckPolicy::new("empty-untrusted-policy", vec![], None, None);
 
     let mut provider = MockGitHubProvider::new();
     provider.repo_result = Some(Ok(sample_repo(1432704795)));
@@ -439,7 +456,7 @@ fn test_09_untrusted_empty_policy() {
     )));
     provider.jobs_result = Some(Ok(sample_jobs()));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 3); // INSUFFICIENT_EVIDENCE
     assert_eq!(
@@ -518,7 +535,7 @@ fn test_11_http_403_429_rate_limited() {
         message: "Rate limit exceeded".to_string(),
     }));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 3); // INSUFFICIENT_EVIDENCE
     assert_eq!(
@@ -538,7 +555,7 @@ fn test_12_http_404_not_found() {
         resource: "repo".to_string(),
     }));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 3);
     assert_eq!(
@@ -560,7 +577,7 @@ fn test_13_http_500_internal_error() {
         rate_limit_reset: None,
     }));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 3);
     assert_eq!(
@@ -580,7 +597,7 @@ fn test_14_truncated_response_json() {
         "unexpected EOF at line 1 column 24".to_string(),
     )));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 3);
     assert_eq!(
@@ -623,7 +640,7 @@ fn test_15_unavailable_or_expired_artifact() {
         digest: None,
     }]));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
@@ -675,11 +692,499 @@ fn test_16_invalid_artifact_digest() {
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string(),
     ));
 
-    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir)
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
         .expect("valid evaluation");
     assert_eq!(output.exit_code, 2);
     assert_eq!(
         output.assessment["derived_summary"]["verdict"],
         "ASSESSED_FAIL"
     );
+}
+
+#[test]
+fn test_17_verified_envelope_context() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new()));
+
+    let ctx = EnvelopeVerificationContext {
+        envelope_digest:
+            "sha256:1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"
+                .to_string(),
+        is_digest_verified: true,
+        is_envelope: true,
+    };
+
+    let output =
+        evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
+            .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["status"],
+        "VALID"
+    );
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["digest_match"],
+        true
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["digest_verified"],
+        true
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["schema_conformant"],
+        true
+    );
+}
+
+#[test]
+fn test_18_bare_payload_context() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new()));
+
+    let ctx = EnvelopeVerificationContext {
+        envelope_digest: String::new(),
+        is_digest_verified: false,
+        is_envelope: false,
+    };
+
+    let output =
+        evaluate_github_evidence(&provider, &target, &policy, &schema_dir, Some(&ctx))
+            .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["status"],
+        "NOT_EVALUATED"
+    );
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_integrity"]["digest_match"],
+        false
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["digest_verified"],
+        false
+    );
+    assert_eq!(
+        output.assessment["claims_breakdown"]["machine_assessed"]["schema_conformant"],
+        true
+    );
+}
+
+#[test]
+fn test_19_historical_run_attempt_valid() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.run_attempt = 1; // Evaluates historical attempt 1
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        2, // Latest attempt is 2!
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    assert_eq!(
+        output.assessment["dimensions"]["ci_execution"]["status"],
+        "VERIFIED_PASS"
+    );
+    let warnings = output.assessment["derived_summary"]["warnings"]
+        .as_array()
+        .unwrap();
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .contains("Evaluating historical run attempt 1")));
+}
+
+#[test]
+fn test_20_attempt_zero_rejected() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.run_attempt = 0; // 0 is invalid
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["dimensions"]["ci_execution"]["status"],
+        "ATTEMPT_MISMATCH"
+    );
+}
+
+#[test]
+fn test_21_attempt_future_rejected() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.run_attempt = 3; // Latest is 2
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        2,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["dimensions"]["ci_execution"]["status"],
+        "ATTEMPT_MISMATCH"
+    );
+}
+
+#[test]
+fn test_22_pagination_incomplete_drops_connection() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind tcp listener");
+    let port = listener.local_addr().unwrap().port();
+
+    thread::spawn(move || {
+        // Page 1 claims 5 items, sends 2
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut req_buf = [0u8; 1024];
+            let _ = stream.read(&mut req_buf);
+            let b = concat!(
+                r#"{"total_count":5,"jobs":["#,
+                r#"{"id":1,"name":"j1","status":"completed","conclusion":"success"},"#,
+                r#"{"id":2,"name":"j2","status":"completed","conclusion":"success"}]}"#
+            );
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: \
+                 application/json\r\n\r\n{}",
+                b.len(),
+                b
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+
+        // Page 2 returns 0 jobs despite total 5
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut req_buf = [0u8; 1024];
+            let _ = stream.read(&mut req_buf);
+            let b = r#"{"total_count":5,"jobs":[]}"#;
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: \
+                 application/json\r\n\r\n{}",
+                b.len(),
+                b
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+
+    let client =
+        HttpGitHubClient::new_with_base_url(format!("http://127.0.0.1:{port}"), None).unwrap();
+    use ece_lib::github::GitHubProvider;
+    let err = client
+        .get_attempt_jobs("o", "r", 123, 1)
+        .expect_err("incomplete pagination must fail");
+    match err {
+        GitHubClientError::IncompletePagination {
+            retrieved,
+            total_count,
+            page_limit,
+        } => {
+            assert_eq!(retrieved, 2);
+            assert_eq!(total_count, 5);
+            assert_eq!(page_limit, 10);
+        }
+        other => panic!("expected IncompletePagination, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_23_policy_scope_mismatch() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    // Policy expects repo 1432704795 and workflow path .github/workflows/expected.yml
+    let policy = TrustedCheckPolicy::new(
+        "scoped-policy",
+        vec!["Linux x64".to_string()],
+        Some("1432704795".to_string()),
+        Some(".github/workflows/expected.yml".to_string()),
+    );
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    let mut run = sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    );
+    run.path = Some(".github/workflows/different.yml".to_string());
+    provider.run_result = Some(Ok(run));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons
+        .iter()
+        .any(|r| r.as_str().unwrap().contains("Policy target workflow mismatch")));
+}
+
+#[test]
+fn test_24_absent_artifact_not_reported_as_expired() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.declared_artifacts.push(DeclaredArtifactSpec {
+        artifact_name: "absent-artifact.zip".to_string(),
+        artifact_id: None,
+        expected_digest: None,
+        verify_bytes: false,
+    });
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(Vec::new())); // Empty artifacts
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_availability"]["status"],
+        "UNREACHABLE"
+    );
+    // Crucial: absent artifact must NOT be in expired_references
+    let expired = output.assessment["dimensions"]["evidence_availability"]["expired_references"]
+        .as_array()
+        .unwrap();
+    assert!(expired.is_empty());
+}
+
+#[test]
+fn test_25_artifact_api_error_fails_closed() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.declared_artifacts.push(DeclaredArtifactSpec {
+        artifact_name: "needed.zip".to_string(),
+        artifact_id: None,
+        expected_digest: None,
+        verify_bytes: false,
+    });
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Err(GitHubClientError::HttpError {
+        status: 500,
+        message: "Internal Server Error".to_string(),
+        rate_limit_reset: None,
+    }));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["dimensions"]["evidence_availability"]["status"],
+        "UNREACHABLE"
+    );
+}
+
+#[test]
+fn test_26_artifact_verify_bytes_empty_digest() {
+    let schema_dir = resolve_schema_dir();
+    let mut target = pilot_target();
+    target.declared_artifacts.push(DeclaredArtifactSpec {
+        artifact_name: "release.zip".to_string(),
+        artifact_id: Some(100),
+        expected_digest: None, // No expected digest
+        verify_bytes: true,
+    });
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+    provider.artifacts_result = Some(Ok(vec![GitHubArtifact {
+        id: 100,
+        name: "release.zip".to_string(),
+        size_in_bytes: 50,
+        archive_download_url: None,
+        expired: false,
+        created_at: None,
+        expires_at: None,
+        digest: None,
+    }]));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 1);
+    let warnings = output.assessment["derived_summary"]["warnings"]
+        .as_array()
+        .unwrap();
+    assert!(warnings.iter().any(|w| w
+        .as_str()
+        .unwrap()
+        .contains("expected_digest was empty or missing")));
+}
+
+#[test]
+fn test_27_ambiguous_duplicate_jobs_rejected() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::ece_pilot_policy();
+
+    let mut jobs = sample_jobs();
+    // Add an identical duplicate job
+    jobs.push(GitHubJob {
+        id: 999999999,
+        name: "Linux x64".to_string(),
+        status: "completed".to_string(),
+        conclusion: Some("success".to_string()),
+        started_at: None,
+        completed_at: None,
+    });
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(jobs));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    assert_eq!(
+        output.assessment["derived_summary"]["verdict"],
+        "ASSESSED_FAIL"
+    );
+    assert_eq!(
+        output.assessment["dimensions"]["ci_execution"]["status"],
+        "FAILED"
+    );
+}
+
+#[test]
+fn test_28_policy_duplicate_required_jobs_rejected() {
+    let schema_dir = resolve_schema_dir();
+    let target = pilot_target();
+    let policy = TrustedCheckPolicy::new(
+        "invalid-policy",
+        vec!["Linux x64".to_string(), "Linux x64".to_string()],
+        Some("1432704795".to_string()),
+        None,
+    );
+
+    let mut provider = MockGitHubProvider::new();
+    provider.repo_result = Some(Ok(sample_repo(1432704795)));
+    provider.commit_result = Some(Ok(sample_commit(&target.commit_sha)));
+    provider.run_result = Some(Ok(sample_run(
+        &target.commit_sha,
+        target.run_id,
+        1,
+        "completed",
+        Some("success"),
+    )));
+    provider.jobs_result = Some(Ok(sample_jobs()));
+
+    let output = evaluate_github_evidence(&provider, &target, &policy, &schema_dir, None)
+        .expect("valid evaluation");
+    assert_eq!(output.exit_code, 2);
+    let reasons = output.assessment["derived_summary"]["blocking_reasons"]
+        .as_array()
+        .unwrap();
+    assert!(reasons.iter().any(|r| r
+        .as_str()
+        .unwrap()
+        .contains("Trusted check policy contains duplicate required job")));
 }
