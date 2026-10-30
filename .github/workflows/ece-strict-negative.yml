@@ -1,8 +1,12 @@
 name: ECE Strict Gate Negative Verification
 
 on:
-  push:
-    branches: [development]
+  workflow_dispatch:
+    inputs:
+      confirm_expected_failure:
+        description: "Acknowledge that this workflow execution is expected to fail closed"
+        required: false
+        default: "true"
 
 permissions:
   contents: read

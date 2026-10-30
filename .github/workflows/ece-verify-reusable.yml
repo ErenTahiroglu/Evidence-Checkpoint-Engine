@@ -206,6 +206,16 @@ jobs:
           echo "  Gate Mode:         $GATE_MODE"
           echo "================================================================"
 
+      - name: Checkout ECE workflow scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          repository: ErenTahiroglu/Evidence-Checkpoint-Engine
+          ref: development
+          sparse-checkout: |
+            .github/scripts
+          path: ece-scripts
+          persist-credentials: false
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
         with:
@@ -271,203 +281,20 @@ jobs:
           TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
           POLICY_SELECTION: ${{ inputs.policy_selection }}
           ECE_VERIFIER_SHA: ${{ steps.provenance.outputs.verifier_source_sha }}
+          ASSESSMENT_FILE: verifier_output/assessment.json
         run: |
-          python3 - << 'PYEOF'
-          import html
-          import json
-          import os
-          import sys
+          set -euo pipefail
+          SCRIPT_PATH=""
+          if [ -f "ece-scripts/.github/scripts/parse_assessment.py" ]; then
+            SCRIPT_PATH="ece-scripts/.github/scripts/parse_assessment.py"
+          elif [ -f ".github/scripts/parse_assessment.py" ]; then
+            SCRIPT_PATH=".github/scripts/parse_assessment.py"
+          else
+            echo "::error::Assessment parser script not found."
+            exit 1
+          fi
 
-          ALLOWED_VERDICTS = [
-              "ASSESSED_PROVISIONAL_PASS",
-              "ASSESSED_LIMITATIONS",
-              "ASSESSED_FAIL",
-              "INSUFFICIENT_EVIDENCE",
-              "REFUSED",
-          ]
-
-          cli_rc_str = os.environ.get("CLI_RC", "")
-          try:
-              cli_rc = int(cli_rc_str)
-          except (ValueError, TypeError):
-              cli_rc = 4
-
-          gate_mode = os.environ.get("GATE_MODE", "strict")
-          target_repo_id = os.environ.get("TARGET_REPO_ID", "")
-          target_owner = os.environ.get("TARGET_OWNER", "")
-          target_repo = os.environ.get("TARGET_REPO", "")
-          target_commit = os.environ.get("TARGET_COMMIT_SHA", "")
-          target_run_id = os.environ.get("TARGET_RUN_ID", "")
-          target_attempt = os.environ.get("TARGET_RUN_ATTEMPT", "1")
-          policy_selection = os.environ.get("POLICY_SELECTION", "")
-          verifier_sha = os.environ.get("ECE_VERIFIER_SHA", "unknown")
-          github_output = os.environ.get("GITHUB_OUTPUT", "")
-          github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY", "")
-
-          assessment_file = "verifier_output/assessment.json"
-          stderr_file = "verifier_output/ece_stderr.log"
-
-          data = None
-          is_valid_assessment = False
-          parse_error_msg = None
-
-          if not os.path.exists(assessment_file) or os.path.getsize(assessment_file) == 0:
-              parse_error_msg = "Assessment output file missing or empty"
-          else:
-              try:
-                  with open(assessment_file, "r", encoding="utf-8") as f:
-                      data = json.load(f)
-                  if not isinstance(data, dict):
-                      parse_error_msg = "Assessment root is not a valid JSON object"
-                  else:
-                      is_valid_assessment = True
-              except Exception as e:
-                  parse_error_msg = f"Failed to parse assessment JSON: {e}"
-
-          if not is_valid_assessment:
-              print(f"Warning: {parse_error_msg}", file=sys.stderr)
-              data = {}
-
-          derived = data.get("derived_summary", {}) if isinstance(data, dict) else {}
-          raw_verdict = derived.get("verdict") if isinstance(derived, dict) else None
-
-          # Strictly validate verdict against schema enum
-          if raw_verdict in ALLOWED_VERDICTS:
-              verdict = raw_verdict
-          else:
-              verdict = "REFUSED" if cli_rc != 0 else "OPERATIONAL_ERROR"
-              if is_valid_assessment:
-                  is_valid_assessment = False
-                  print(f"Warning: Unknown or invalid verdict '{raw_verdict}'", file=sys.stderr)
-
-          json_exit_code = data.get("exit_code") if isinstance(data, dict) else None
-          if json_exit_code is not None and not isinstance(json_exit_code, int):
-              is_valid_assessment = False
-              json_exit_code = None
-
-          # Strictly require CLI process exit code to match JSON exit code
-          contradiction = False
-          if is_valid_assessment:
-              if json_exit_code != cli_rc:
-                  contradiction = True
-                  is_valid_assessment = False
-                  print(
-                      f"Contradiction detected: CLI process exit code ({cli_rc}) != JSON exit_code ({json_exit_code})",
-                      file=sys.stderr,
-                  )
-
-          effective_exit_code = cli_rc if (json_exit_code is None or contradiction) else json_exit_code
-
-          dimensions = data.get("dimensions", {}) if isinstance(data, dict) else {}
-          ci_exec = dimensions.get("ci_execution", {}) if isinstance(dimensions, dict) else {}
-          ci_status = ci_exec.get("status", "UNVERIFIED_RUN")
-          observed_jobs = ci_exec.get("observed_jobs_count", 0)
-          expected_jobs = ci_exec.get("expected_jobs_count", 0)
-
-          # Checkpoint acceptance strictly requires:
-          # 1. Structural validity without parse errors or contradiction
-          # 2. Real CLI process exit code == 0
-          # 3. JSON reported exit code == 0
-          # 4. Verdict is ASSESSED_PROVISIONAL_PASS
-          # 5. CI status is VERIFIED_PASS
-          checkpoint_accepted = "false"
-          if (
-              is_valid_assessment
-              and not contradiction
-              and cli_rc == 0
-              and effective_exit_code == 0
-              and verdict == "ASSESSED_PROVISIONAL_PASS"
-              and ci_status == "VERIFIED_PASS"
-          ):
-              checkpoint_accepted = "true"
-
-          # Write Step Outputs
-          if github_output:
-              with open(github_output, "a", encoding="utf-8") as out:
-                  out.write(f"verdict={verdict}\n")
-                  out.write(f"exit_code={effective_exit_code}\n")
-                  out.write(f"cli_rc={cli_rc}\n")
-                  out.write(f"ci_status={ci_status}\n")
-                  out.write(f"checkpoint_accepted={checkpoint_accepted}\n")
-                  out.write(f"is_valid_assessment={'true' if is_valid_assessment else 'false'}\n")
-
-          # Safe markdown escaping helpers
-          def sanitize_cell(val):
-              s = str(val) if val is not None else ""
-              s = html.escape(s)
-              return s.replace("|", "&#124;").replace("\n", " ").replace("\r", "")
-
-          def sanitize_block(val):
-              s = str(val) if val is not None else ""
-              return html.escape(s).replace("\r", "")
-
-          # Write Structured GITHUB_STEP_SUMMARY
-          summary = []
-          summary.append("## Evidence Checkpoint Engine — Verification Summary\n")
-          summary.append("| Parameter | Value |")
-          summary.append("| :--- | :--- |")
-          summary.append(f"| **Gate Mode** | `{sanitize_cell(gate_mode)}` |")
-          summary.append(f"| **Checkpoint Accepted** | `{sanitize_cell(checkpoint_accepted)}` |")
-          summary.append(f"| **Engine Verdict** | **`{sanitize_cell(verdict)}`** (Exit Code `{sanitize_cell(effective_exit_code)}`, Process `{sanitize_cell(cli_rc)}`) |")
-          summary.append(f"| **Target Repository** | `{sanitize_cell(target_owner)}/{sanitize_cell(target_repo)}` (ID: `{sanitize_cell(target_repo_id)}`) |")
-          summary.append(f"| **Target Commit SHA** | `{sanitize_cell(target_commit)}` |")
-          summary.append(f"| **Target Workflow Run** | Run `{sanitize_cell(target_run_id)}` (Attempt `{sanitize_cell(target_attempt)}`) |")
-          summary.append(f"| **Trusted Check Policy** | `{sanitize_cell(policy_selection)}` |")
-          summary.append(f"| **ECE Verifier Source** | `{sanitize_cell(verifier_sha)}` |\n")
-
-          summary.append("### Six-Dimensional Trust Status\n")
-          summary.append("| Dimension | Status | Key Information |")
-          summary.append("| :--- | :--- | :--- |")
-
-          # 1. Evidence Integrity
-          ev_int = dimensions.get("evidence_integrity", {}) if isinstance(dimensions, dict) else {}
-          status_int = ev_int.get("status", "NOT_EVALUATED")
-          details_int = ev_int.get("details", "")
-          summary.append(f"| **Evidence Integrity** | `{sanitize_cell(status_int)}` | {sanitize_cell(details_int)} |")
-
-          # 2. CI Execution
-          summary.append(f"| **CI Execution** | `{sanitize_cell(ci_status)}` | {sanitize_cell(observed_jobs)}/{sanitize_cell(expected_jobs)} policy jobs observed completed with success |")
-
-          # 3. Evidence Availability
-          ev_avail = dimensions.get("evidence_availability", {}) if isinstance(dimensions, dict) else {}
-          status_avail = ev_avail.get("status", "NOT_PROVIDED")
-          summary.append(f"| **Evidence Availability** | `{sanitize_cell(status_avail)}` | Provider artifacts verification |")
-
-          # 4. Independent Review
-          rev = dimensions.get("review_status", {}) if isinstance(dimensions, dict) else {}
-          status_rev = rev.get("status", "UNREVIEWED")
-          tier_rev = rev.get("tier", "NONE")
-          summary.append(f"| **Independent Review** | `{sanitize_cell(status_rev)}` | Tier: `{sanitize_cell(tier_rev)}` |")
-
-          # 5. Human Authorization
-          auth = dimensions.get("authorization", {}) if isinstance(dimensions, dict) else {}
-          status_auth = auth.get("status", "AUTHORIZATION_PENDING")
-          summary.append(f"| **Human Authorization** | `{sanitize_cell(status_auth)}` | Owner decision pending |")
-
-          # 6. Freshness
-          fresh = dimensions.get("freshness", {}) if isinstance(dimensions, dict) else {}
-          status_fresh = fresh.get("status", "HISTORICAL_BASELINE")
-          summary.append(f"| **Freshness** | `{sanitize_cell(status_fresh)}` | Head SHA unpinned |")
-
-          blocking = derived.get("blocking_reasons", []) if isinstance(derived, dict) else []
-          warnings = derived.get("warnings", []) if isinstance(derived, dict) else []
-
-          if blocking and isinstance(blocking, list):
-              summary.append("\n#### Blocking Reasons")
-              for b in blocking:
-                  summary.append(f"- ⚠️ {sanitize_block(b)}")
-
-          if warnings and isinstance(warnings, list):
-              summary.append("\n#### Warnings & Invariants")
-              for w in warnings:
-                  summary.append(f"- ℹ️ {sanitize_block(w)}")
-
-          if github_step_summary:
-              with open(github_step_summary, "a", encoding="utf-8") as s:
-                  s.write("\n".join(summary) + "\n")
-
-          print("Step outputs and GITHUB_STEP_SUMMARY generated.")
-          PYEOF
+          python3 "$SCRIPT_PATH"
 
       - name: Enforce gate semantics
         env:
@@ -484,7 +311,7 @@ jobs:
 
           if [ "$GATE_MODE" = "strict" ]; then
             if [ "$CHECKPOINT_ACCEPTED" != "true" ]; then
-              echo "::error::Strict acceptance gate failed: checkpoint is NOT accepted (verdict: $VERDICT, exit_code: $EXIT_CODE, cli_rc: $CLI_RC, accepted: $CHECKPOINT_ACCEPTED)."
+              echo "::error::Strict acceptance gate failed: checkpoint is NOT accepted (verdict: $VERDICT, exit_code: $EXIT_CODE, cli_rc: $CLI_RC, accepted: $CHECKPOINT_ACCEPTED). Full independent acceptance cannot be established without supported independent review and owner authorization trust path."
               exit 1
             fi
             echo "Strict acceptance gate satisfied: checkpoint accepted with verdict ASSESSED_PROVISIONAL_PASS."
