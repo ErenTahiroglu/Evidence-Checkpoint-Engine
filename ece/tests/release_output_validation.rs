@@ -10,6 +10,9 @@ use ece_lib::verifier::{inspect_payload, verify_envelope, VerifierError};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 const INCOMPATIBLE_ASSESSMENT_SCHEMA: &str = r#"{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -29,9 +32,11 @@ struct TempSchemaDir {
 
 impl TempSchemaDir {
     fn new(incompatible_assessment_schema: &str) -> Self {
+        let count = COUNTER.fetch_add(1, Ordering::SeqCst);
         let unique = format!(
-            "ece_test_incompatible_schema_{}_{}",
+            "ece_test_incompatible_schema_{}_{}_{}",
             std::process::id(),
+            count,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
