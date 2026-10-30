@@ -270,21 +270,25 @@ jobs:
 
           # Negative 8: Strict gate mode simulation: verify that strict gate mode fails on exit code 1
           set +e
-          python3 -c "import sys; \
-            exit_code = 1; \
-            gate_mode = 'strict'; \
-            verdict = 'ASSESSED_LIMITATIONS'; \
-            accepted = (exit_code == 0 and verdict == 'VERIFIED'); \
-            assert not accepted; \
-            if gate_mode == 'strict' and exit_code != 0: \
-                sys.exit(1)"
+          bash -c '
+            EXIT_CODE=1
+            GATE_MODE="strict"
+            VERDICT="ASSESSED_LIMITATIONS"
+            CHECKPOINT_ACCEPTED="false"
+            if [ "$GATE_MODE" = "strict" ]; then
+              if [ "$EXIT_CODE" -ne 0 ]; then
+                exit 1
+              fi
+            fi
+            exit 0
+          '
           sim_rc=$?
+          set -e
           if [ $sim_rc -ne 1 ]; then
             echo "Expected exit code 1 for strict gate simulation on exit_code=1, got $sim_rc"
             exit 1
           fi
           echo "Negative 8 (strict gate mode simulation) verified: gate fails closed on exit 1"
-          set -e
 
       - name: Smoke test CLI (Windows)
         if: runner.os == 'Windows'
