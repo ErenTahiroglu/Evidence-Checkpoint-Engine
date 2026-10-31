@@ -356,6 +356,7 @@ def format_step_summary(res, target_info):
     target_attempt = target_info.get("target_attempt", "1")
     policy_selection = target_info.get("policy_selection", "")
     verifier_sha = target_info.get("verifier_sha", "unknown")
+    parser_sha = target_info.get("gate_parser_sha", "unknown")
 
     verdict = res["verdict"]
     exit_code = res["exit_code"]
@@ -380,7 +381,8 @@ def format_step_summary(res, target_info):
     summary.append(f"| **Target Commit SHA** | `{sanitize_cell(target_commit)}` |")
     summary.append(f"| **Target Workflow Run** | Run `{sanitize_cell(target_run_id)}` (Attempt `{sanitize_cell(target_attempt)}`) |")
     summary.append(f"| **Trusted Check Policy** | `{sanitize_cell(policy_selection)}` |")
-    summary.append(f"| **ECE Verifier Source** | `{sanitize_cell(verifier_sha)}` |\n")
+    summary.append(f"| **ECE Verifier Source** | `{sanitize_cell(verifier_sha)}` |")
+    summary.append(f"| **ECE Gate Parser Source** | `{sanitize_cell(parser_sha)}` |\n")
 
     summary.append("### Six-Dimensional Trust Status\n")
     summary.append("| Dimension | Status | Key Information |")
@@ -644,6 +646,27 @@ def run_tests():
     tests_run += 1
     print("Test 12 Passed: Markdown table cell and text block sanitization verified")
 
+    # Test 13: Structured summary formatting with verifier and gate parser SHAs
+    summary_test = format_step_summary(
+        res8_obs,
+        {
+            "gate_mode": "observation",
+            "target_repo_id": "1432704795",
+            "target_owner": "ErenTahiroglu",
+            "target_repo": "Evidence-Checkpoint-Engine",
+            "target_commit": "415990746d5bbd3756f743b4b5a7673b36228567",
+            "target_run_id": "40969401836",
+            "target_attempt": "1",
+            "policy_selection": "ece-pilot-four-runner-matrix",
+            "verifier_sha": "fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c",
+            "gate_parser_sha": "63ed53f73d9ece39062272d8f61d4616f7f824e8",
+        },
+    )
+    assert "| **ECE Verifier Source** | `fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c` |" in summary_test
+    assert "| **ECE Gate Parser Source** | `63ed53f73d9ece39062272d8f61d4616f7f824e8` |" in summary_test
+    tests_run += 1
+    print("Test 13 Passed: Structured step summary formats both verifier and parser SHAs")
+
     print("=" * 64)
     print(f"All {tests_run}/{tests_run} ECE Gate & Assessment Parser Tests PASSED.")
     print("=" * 64)
@@ -675,6 +698,7 @@ def main():
         "target_attempt": os.environ.get("TARGET_RUN_ATTEMPT", "1"),
         "policy_selection": os.environ.get("POLICY_SELECTION", ""),
         "verifier_sha": os.environ.get("ECE_VERIFIER_SHA", "unknown"),
+        "gate_parser_sha": os.environ.get("ECE_PARSER_SHA", "unknown"),
     }
 
     raw_json_str = ""

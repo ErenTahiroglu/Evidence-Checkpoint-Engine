@@ -76,6 +76,9 @@ on:
       verifier_source_sha:
         description: "Commit SHA of the approved ECE verifier source used"
         value: ${{ jobs.verify.outputs.verifier_source_sha }}
+      gate_parser_source_sha:
+        description: "Commit SHA of the approved immutable ECE gate parser source used"
+        value: ${{ jobs.verify.outputs.gate_parser_source_sha }}
 
 permissions:
   contents: read
@@ -91,6 +94,7 @@ jobs:
       ci_status: ${{ steps.parse_and_summarize.outputs.ci_status }}
       checkpoint_accepted: ${{ steps.parse_and_summarize.outputs.checkpoint_accepted }}
       verifier_source_sha: ${{ steps.provenance.outputs.verifier_source_sha }}
+      gate_parser_source_sha: ${{ steps.parser_provenance.outputs.gate_parser_source_sha }}
 
     steps:
       - name: Validate input contract and policy scope
@@ -206,15 +210,29 @@ jobs:
           echo "  Gate Mode:         $GATE_MODE"
           echo "================================================================"
 
-      - name: Checkout ECE workflow scripts
+      - name: Checkout approved immutable ECE gate parser source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           repository: ErenTahiroglu/Evidence-Checkpoint-Engine
-          ref: development
+          ref: 63ed53f73d9ece39062272d8f61d4616f7f824e8
           sparse-checkout: |
             .github/scripts
           path: ece-scripts
           persist-credentials: false
+
+      - name: Verify parser source integrity and bind provenance
+        id: parser_provenance
+        env:
+          EXPECTED_PARSER_SHA: "63ed53f73d9ece39062272d8f61d4616f7f824e8"
+        run: |
+          set -euo pipefail
+          ACTUAL_PARSER_SHA=$(git -C ece-scripts rev-parse HEAD)
+          if [ "$ACTUAL_PARSER_SHA" != "$EXPECTED_PARSER_SHA" ]; then
+            echo "::error::Parser source integrity check failed: expected '$EXPECTED_PARSER_SHA', got '$ACTUAL_PARSER_SHA'"
+            exit 1
+          fi
+          echo "gate_parser_source_sha=$ACTUAL_PARSER_SHA" >> "$GITHUB_OUTPUT"
+          echo "ECE Gate Parser Source: $ACTUAL_PARSER_SHA (immutable GOV-03 baseline)"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
@@ -281,16 +299,13 @@ jobs:
           TARGET_RUN_ATTEMPT: ${{ inputs.target_run_attempt }}
           POLICY_SELECTION: ${{ inputs.policy_selection }}
           ECE_VERIFIER_SHA: ${{ steps.provenance.outputs.verifier_source_sha }}
+          ECE_PARSER_SHA: ${{ steps.parser_provenance.outputs.gate_parser_source_sha }}
           ASSESSMENT_FILE: verifier_output/assessment.json
         run: |
           set -euo pipefail
-          SCRIPT_PATH=""
-          if [ -f "ece-scripts/.github/scripts/parse_assessment.py" ]; then
-            SCRIPT_PATH="ece-scripts/.github/scripts/parse_assessment.py"
-          elif [ -f ".github/scripts/parse_assessment.py" ]; then
-            SCRIPT_PATH=".github/scripts/parse_assessment.py"
-          else
-            echo "::error::Assessment parser script not found."
+          SCRIPT_PATH="ece-scripts/.github/scripts/parse_assessment.py"
+          if [ ! -f "$SCRIPT_PATH" ]; then
+            echo "::error::Approved immutable gate parser script not found at '$SCRIPT_PATH'."
             exit 1
           fi
 

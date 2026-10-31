@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
@@ -425,6 +427,7 @@ jobs:
           PILOT_CI_STATUS: ${{ needs.test-reusable-observation-pilot.outputs.ci_status }}
           PILOT_ACCEPTED: ${{ needs.test-reusable-observation-pilot.outputs.checkpoint_accepted }}
           PILOT_VERIFIER_SHA: ${{ needs.test-reusable-observation-pilot.outputs.verifier_source_sha }}
+          PILOT_PARSER_SHA: ${{ needs.test-reusable-observation-pilot.outputs.gate_parser_source_sha }}
         run: |
           set -euo pipefail
           echo "================================================================"
@@ -435,6 +438,7 @@ jobs:
           echo "  CI Status:           $PILOT_CI_STATUS"
           echo "  Checkpoint Accepted: $PILOT_ACCEPTED"
           echo "  Verifier Source SHA: $PILOT_VERIFIER_SHA"
+          echo "  Parser Source SHA:   $PILOT_PARSER_SHA"
           echo "================================================================"
 
           if [ "$PILOT_VERDICT" != "ASSESSED_LIMITATIONS" ]; then
@@ -464,6 +468,11 @@ jobs:
 
           if [ "$PILOT_VERIFIER_SHA" != "fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c" ]; then
             echo "::error::Expected verifier SHA 'fbea48be57adfe8bbf1dbd75c8c425eb7cf9f86c', got '$PILOT_VERIFIER_SHA'"
+            exit 1
+          fi
+
+          if [ "$PILOT_PARSER_SHA" != "63ed53f73d9ece39062272d8f61d4616f7f824e8" ]; then
+            echo "::error::Expected parser SHA '63ed53f73d9ece39062272d8f61d4616f7f824e8', got '$PILOT_PARSER_SHA'"
             exit 1
           fi
 
