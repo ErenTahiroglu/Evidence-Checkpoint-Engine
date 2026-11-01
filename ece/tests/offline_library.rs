@@ -711,7 +711,9 @@ fn offline_modules_contain_no_http_client_token_lookup_or_socket_code() {
 fn offline_build_has_the_http_feature_disabled() {
     // Marker: this test only exists in a `--no-default-features` build, so a green run proves that build ran the
     // whole offline suite above (including the real evaluator with a mock provider and the embedded schemas).
-    assert!(!cfg!(feature = "github-http"));
+    // `black_box` keeps this a runtime check of the compiled configuration (a bare constant assertion trips clippy).
+    let http_feature_compiled = std::hint::black_box(cfg!(feature = "github-http"));
+    assert!(!http_feature_compiled);
 }
 
 #[cfg(feature = "github-http")]
