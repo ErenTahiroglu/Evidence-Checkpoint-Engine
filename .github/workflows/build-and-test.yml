@@ -469,6 +469,52 @@ jobs:
           fi
           rm -f offline_graph.txt default_graph.txt
 
+      - name: Offline serde_json keeps its sorted-key feature set (ECE-LIB-02)
+        working-directory: ece
+        shell: bash
+        run: |
+          set -euo pipefail
+          fmt='{p} [{f}]'
+          offline=$(cargo tree --locked --no-default-features -e normal,build --prefix none -f "$fmt")
+          default=$(cargo tree --locked -e normal,build --prefix none -f "$fmt")
+          echo "offline serde_json: $(echo "$offline" | grep -E '^serde_json ' | sort -u | paste -sd ';' -)"
+          echo "default serde_json: $(echo "$default" | grep -E '^serde_json ' | sort -u | paste -sd ';' -)"
+          echo "offline ece:        $(echo "$offline" | grep -E '^ece ' | sort -u | sed -E 's# \(.*\)##' | paste -sd ';' -)"
+          if echo "$offline" | grep -E '^serde_json ' | grep -E 'preserve_order|indexmap'; then
+            echo "::error::the offline build enables serde_json preserve_order or indexmap"
+            exit 1
+          fi
+          if echo "$offline" | grep -E '^indexmap '; then
+            echo "::error::the offline build graph contains indexmap"
+            exit 1
+          fi
+          if echo "$offline" | grep -E '^ece ' | grep -E 'github-http|preserve-json-order'; then
+            echo "::error::the offline build enables an ECE feature it must not"
+            exit 1
+          fi
+          # Control: the default build still turns preserve_order on (the CLI keeps its insertion-order output).
+          if ! echo "$default" | grep -E '^serde_json ' | grep -q 'preserve_order'; then
+            echo "::error::control failed: the default build does not enable serde_json preserve_order"
+            exit 1
+          fi
+
+      - name: Security results and the RFC 8785 digest do not depend on the JSON-order feature (ECE-LIB-02)
+        working-directory: ece
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          off=$(cargo test --locked --no-default-features --test json_order -- --nocapture | grep '^ORDER_EVIDENCE')
+          def=$(cargo test --locked --test json_order -- --nocapture | grep '^ORDER_EVIDENCE')
+          echo "offline: $off"
+          echo "default: $def"
+          if [ -z "$off" ] || [ "$off" != "$def" ]; then
+            echo "::error::the normalized assessment digest differs between the offline and the default configuration"
+            exit 1
+          fi
+
       - name: Offline library artifact contains no HTTP client or token lookup
         working-directory: ece
         shell: bash

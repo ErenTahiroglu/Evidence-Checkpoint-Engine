@@ -9,8 +9,9 @@ repository = "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine"
 [[bin]]
 name = "ece"
 path = "src/main.rs"
-# The CLI performs live GitHub assessments, so it needs the HTTP client.
-required-features = ["github-http"]
+# The CLI performs live GitHub assessments, so it needs the HTTP client, and it prints JSON in the historical
+# insertion order, which needs `preserve-json-order`.
+required-features = ["github-http", "preserve-json-order"]
 
 [features]
 # `github-http` compiles the live HTTP provider (`HttpGitHubClient`, with its ambient GITHUB_TOKEN/GH_TOKEN fallback)
@@ -18,8 +19,15 @@ required-features = ["github-http"]
 # An embedding consumer that must stay offline depends on this crate with `default-features = false`:
 # the verifier, the evaluator, `GitHubProvider`, `MockGitHubProvider`, the policy and the embedded schemas
 # remain available, and no HTTP client or token lookup is compiled.
-default = ["github-http"]
+#
+# `preserve-json-order` turns on `serde_json/preserve_order`, which makes every `serde_json::Map` keep insertion order.
+# Cargo unifies features across the whole dependency graph, so an embedding consumer that enabled it would change the
+# key order of ITS OWN `serde_json` objects. It is therefore ON by default (the CLI keeps its historical output order)
+# and OFF for `default-features = false` consumers, whose `serde_json` keeps its sorted-key behaviour. The verifier's
+# verdicts, schemas and RFC 8785 digests do not depend on it.
+default = ["github-http", "preserve-json-order"]
 github-http = ["dep:reqwest"]
+preserve-json-order = ["serde_json/preserve_order"]
 
 [lib]
 name = "ece_lib"
@@ -27,7 +35,7 @@ path = "src/lib.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = "1"
 serde_jcs = "0.2"
 jsonschema = { version = "0.29", default-features = false }
 sha2 = "0.10"
@@ -51,11 +59,11 @@ name = "github_adapter_mock"
 path = "tests/github_adapter_mock.rs"
 required-features = ["github-http"]
 
-# This suite runs the built `ece` binary, which exists only with the HTTP feature.
+# This suite runs the built `ece` binary, which exists only with both features the binary requires.
 [[test]]
 name = "release_output_validation"
 path = "tests/release_output_validation.rs"
-required-features = ["github-http"]
+required-features = ["github-http", "preserve-json-order"]
 
 [profile.release]
 strip = true
