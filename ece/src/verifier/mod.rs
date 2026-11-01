@@ -17,5 +17,8 @@ pub use canonicalize::canonicalize;
 pub use digest::{compute_digest, verify_envelope_digest};
 pub use error::{ErrorCode, VerifierError};
 pub use parser::{parse_bounded_json, MAX_INPUT_BYTES, MAX_NESTING_DEPTH};
-pub use schema::{default_schema_dir, SchemaStore};
+pub use schema::{
+    default_schema_dir, SchemaStore, EMBEDDED_ASSESSMENT_SCHEMA, EMBEDDED_ENVELOPE_SCHEMA,
+    EMBEDDED_INPUT_SCHEMA,
+};
 pub use semantic::{run_semantic_checks, SemanticResult};

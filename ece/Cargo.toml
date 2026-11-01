@@ -9,6 +9,17 @@ repository = "https://github.com/ErenTahiroglu/Evidence-Checkpoint-Engine"
 [[bin]]
 name = "ece"
 path = "src/main.rs"
+# The CLI performs live GitHub assessments, so it needs the HTTP client.
+required-features = ["github-http"]
+
+[features]
+# `github-http` compiles the live HTTP provider (`HttpGitHubClient`, with its ambient GITHUB_TOKEN/GH_TOKEN fallback)
+# and the `reqwest` dependency. It is ON by default so the CLI and the existing test suite keep their behaviour.
+# An embedding consumer that must stay offline depends on this crate with `default-features = false`:
+# the verifier, the evaluator, `GitHubProvider`, `MockGitHubProvider`, the policy and the embedded schemas
+# remain available, and no HTTP client or token lookup is compiled.
+default = ["github-http"]
+github-http = ["dep:reqwest"]
 
 [lib]
 name = "ece_lib"
@@ -29,12 +40,23 @@ reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "json",
     "rustls-tls",
-] }
+], optional = true }
 
 [dev-dependencies]
 # Uses std only; no dev deps needed.
 
+# This suite exercises the live HTTP client against a loopback listener, so it is only built with the HTTP feature.
+[[test]]
+name = "github_adapter_mock"
+path = "tests/github_adapter_mock.rs"
+required-features = ["github-http"]
+
+# This suite runs the built `ece` binary, which exists only with the HTTP feature.
+[[test]]
+name = "release_output_validation"
+path = "tests/release_output_validation.rs"
+required-features = ["github-http"]
+
 [profile.release]
 strip = true
 opt-level = "z"
-

@@ -395,6 +395,108 @@ jobs:
           fi
           rm -f neg1_out.json neg1_err.txt
 
+  # ECE-LIB-01: the offline embeddable library boundary. Builds the library with default features disabled (no
+  # `github-http`) and proves, per platform, that no HTTP client, TLS stack or ambient-token code is compiled.
+  offline-library:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: Linux x64
+          - os: macos-26
+            name: macOS ARM64
+          - os: windows-2025
+            name: Windows x64
+          - os: macos-26-intel
+            name: macOS Intel x64
+
+    runs-on: ${{ matrix.os }}
+    name: Offline library (${{ matrix.name }})
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-offline-cargo-${{ hashFiles('ece/Cargo.lock', 'ece/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-offline-cargo-
+
+      - name: Offline library tests (default features disabled, no token in the environment)
+        working-directory: ece
+        shell: bash
+        env:
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          cargo test --locked --no-default-features
+
+      - name: Offline library clippy
+        working-directory: ece
+        run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
+
+      - name: Offline dependency graph has no HTTP, TLS or async-network crate
+        working-directory: ece
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo tree --locked -e normal,build --no-default-features --prefix none | sort -u > offline_graph.txt
+          cargo tree --locked -e normal,build --prefix none | sort -u > default_graph.txt
+          echo "offline graph: $(wc -l < offline_graph.txt) packages; default graph: $(wc -l < default_graph.txt) packages"
+          pattern='^(reqwest|hyper|hyper-util|hyper-rustls|rustls|rustls-webpki|ring|h2|native-tls|openssl|tokio|tokio-rustls|socket2|mio) '
+          if grep -E "$pattern" offline_graph.txt; then
+            echo "::error::the offline (default-features = false) build graph contains a network crate"
+            exit 1
+          fi
+          # Control: the same filter must find reqwest in the default graph, otherwise this check proves nothing.
+          if ! grep -qE '^reqwest ' default_graph.txt; then
+            echo "::error::control failed: reqwest is not in the default graph"
+            exit 1
+          fi
+          rm -f offline_graph.txt default_graph.txt
+
+      - name: Offline library artifact contains no HTTP client or token lookup
+        working-directory: ece
+        shell: bash
+        run: |
+          set -euo pipefail
+          needles=("GITHUB_TOKEN" "GH_TOKEN" "reqwest" "api.github.com" "Evidence-Checkpoint-Engine-GOV-02")
+          cargo build --locked --no-default-features --lib
+          lib=target/debug/libece_lib.rlib
+          test -f "$lib"
+          for n in "${needles[@]}"; do
+            c=$(grep -a -c -F -- "$n" "$lib" || true)
+            echo "offline  $n: $c"
+            if [ "$c" != "0" ]; then
+              echo "::error::offline library artifact contains '$n'"
+              exit 1
+            fi
+          done
+          # Control: the default build of the same library does contain them (so a zero above is meaningful).
+          cargo build --locked --lib
+          for n in "GITHUB_TOKEN" "reqwest" "api.github.com"; do
+            c=$(grep -a -c -F -- "$n" "$lib" || true)
+            echo "default  $n: $c"
+            if [ "$c" = "0" ]; then
+              echo "::error::control failed: default library artifact lacks '$n'"
+              exit 1
+            fi
+          done
+
   test-reusable-observation-pilot:
     uses: ./.github/workflows/ece-verify-reusable.yml
     with:

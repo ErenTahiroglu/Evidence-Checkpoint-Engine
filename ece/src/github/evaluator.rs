@@ -45,6 +45,8 @@ pub struct TargetEvidenceRequest {
     pub declared_artifacts: Vec<DeclaredArtifactSpec>,
 }
 
+/// Path-based entry point: loads the schemas from `schema_dir`, then evaluates exactly like
+/// [`evaluate_github_evidence_with_store`]. Kept unchanged for existing callers (the CLI).
 pub fn evaluate_github_evidence(
     provider: &dyn GitHubProvider,
     target: &TargetEvidenceRequest,
@@ -53,6 +55,19 @@ pub fn evaluate_github_evidence(
     envelope_ctx: Option<&EnvelopeVerificationContext>,
 ) -> Result<VerificationOutput, VerifierError> {
     let store = SchemaStore::load(schema_dir)?;
+    evaluate_github_evidence_with_store(provider, target, policy, &store, envelope_ctx)
+}
+
+/// Evaluates GitHub evidence with a preconstructed [`SchemaStore`] (for example `SchemaStore::from_embedded()`),
+/// so the caller supplies no schema directory and the evaluator touches no schema file. The evaluation logic is
+/// identical to `evaluate_github_evidence`; only the source of the validators differs.
+pub fn evaluate_github_evidence_with_store(
+    provider: &dyn GitHubProvider,
+    target: &TargetEvidenceRequest,
+    policy: &TrustedCheckPolicy,
+    store: &SchemaStore,
+    envelope_ctx: Option<&EnvelopeVerificationContext>,
+) -> Result<VerificationOutput, VerifierError> {
     let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let assessment_id = format!("ece-eval-{}", Uuid::new_v4());
 
@@ -139,7 +154,7 @@ pub fn evaluate_github_evidence(
         Ok(r) => r,
         Err(e) => {
             return build_api_failure_assessment(
-                &store,
+                store,
                 target,
                 &assessment_id,
                 &timestamp,
@@ -191,7 +206,7 @@ pub fn evaluate_github_evidence(
         Ok(r) => r,
         Err(e) => {
             return build_api_failure_assessment(
-                &store,
+                store,
                 target,
                 &assessment_id,
                 &timestamp,
@@ -348,7 +363,7 @@ pub fn evaluate_github_evidence(
         Ok(jobs) => jobs,
         Err(e) => {
             return build_api_failure_assessment(
-                &store,
+                store,
                 target,
                 &assessment_id,
                 &timestamp,
@@ -618,7 +633,7 @@ pub fn evaluate_github_evidence(
     });
 
     validate_and_wrap(
-        &store,
+        store,
         VerificationOutput {
             exit_code,
             assessment,

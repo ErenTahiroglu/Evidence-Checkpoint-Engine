@@ -1,7 +1,7 @@
 // schema.rs — JSON Schema Draft 2020-12 validation with offline local $ref resolution.
 //
 // Security properties:
-//   - All schemas loaded from disk at startup, keyed by their $id URI
+//   - All schemas come from a directory (`load`) or from the copies embedded at compile time (`from_embedded`), keyed by their $id URI
 //   - A custom Retrieve implementation maps $id URIs to local schema values
 //   - No network access; unresolvable URIs are an error, not a network call
 //   - No schema from the untrusted input document is ever used for validation
@@ -10,6 +10,16 @@ use crate::verifier::error::VerifierError;
 use jsonschema::{Draft, Retrieve, Uri, Validator};
 use serde_json::Value;
 use std::{collections::HashMap, path::Path};
+
+/// `checkpoint-input.schema.json` as accepted in `docs/gov-00/schemas/`, embedded at compile time.
+pub const EMBEDDED_INPUT_SCHEMA: &str =
+    include_str!("../../../docs/gov-00/schemas/checkpoint-input.schema.json");
+/// `checkpoint-envelope.schema.json` as accepted in `docs/gov-00/schemas/`, embedded at compile time.
+pub const EMBEDDED_ENVELOPE_SCHEMA: &str =
+    include_str!("../../../docs/gov-00/schemas/checkpoint-envelope.schema.json");
+/// `assessment-output.schema.json` as accepted in `docs/gov-00/schemas/`, embedded at compile time.
+pub const EMBEDDED_ASSESSMENT_SCHEMA: &str =
+    include_str!("../../../docs/gov-00/schemas/assessment-output.schema.json");
 
 /// Holds compiled validators for the three schema types.
 pub struct SchemaStore {
@@ -58,13 +68,35 @@ impl SchemaStore {
             VerifierError::SchemaIo(format!("cannot read {}: {e}", assessment_path.display()))
         })?;
 
-        let input_schema: Value = serde_json::from_str(&input_text).map_err(|e| {
+        Self::from_schema_texts(&input_text, &envelope_text, &assessment_text)
+    }
+
+    /// Build the validators from the three accepted schema documents embedded in this library at compile time.
+    ///
+    /// Nothing is read from the filesystem, the current directory or the environment, and nothing is written
+    /// anywhere. The embedded documents are the same files `load` reads from `docs/gov-00/schemas/` and go
+    /// through the same parse, `$id` registration and local-only `$ref` resolution.
+    pub fn from_embedded() -> Result<Self, VerifierError> {
+        Self::from_schema_texts(
+            EMBEDDED_INPUT_SCHEMA,
+            EMBEDDED_ENVELOPE_SCHEMA,
+            EMBEDDED_ASSESSMENT_SCHEMA,
+        )
+    }
+
+    /// Shared by `load` and `from_embedded`: parse the three documents and compile the validators.
+    fn from_schema_texts(
+        input_text: &str,
+        envelope_text: &str,
+        assessment_text: &str,
+    ) -> Result<Self, VerifierError> {
+        let input_schema: Value = serde_json::from_str(input_text).map_err(|e| {
             VerifierError::SchemaIo(format!("cannot parse checkpoint-input schema: {e}"))
         })?;
-        let envelope_schema: Value = serde_json::from_str(&envelope_text).map_err(|e| {
+        let envelope_schema: Value = serde_json::from_str(envelope_text).map_err(|e| {
             VerifierError::SchemaIo(format!("cannot parse checkpoint-envelope schema: {e}"))
         })?;
-        let assessment_schema: Value = serde_json::from_str(&assessment_text).map_err(|e| {
+        let assessment_schema: Value = serde_json::from_str(assessment_text).map_err(|e| {
             VerifierError::SchemaIo(format!("cannot parse assessment-output schema: {e}"))
         })?;
 
