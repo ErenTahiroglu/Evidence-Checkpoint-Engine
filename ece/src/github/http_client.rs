@@ -26,6 +26,21 @@ pub struct HttpGitHubClient {
     client: Client,
 }
 
+fn is_redirect_target_approved(
+    approved_scheme: &str,
+    approved_host: &str,
+    approved_port: Option<u16>,
+    target_url: &reqwest::Url,
+) -> bool {
+    let target_scheme = target_url.scheme();
+    let target_host = target_url.host_str().unwrap_or("");
+    let target_port = target_url.port_or_known_default();
+
+    target_scheme == approved_scheme
+        && target_host == approved_host
+        && target_port == approved_port
+}
+
 impl HttpGitHubClient {
     pub fn new(token: Option<String>) -> Result<Self, GitHubClientError> {
         Self::new_with_base_url(DEFAULT_GITHUB_API_BASE, token)
@@ -48,7 +63,7 @@ impl HttpGitHubClient {
     /// - Never reads GITHUB_TOKEN or GH_TOKEN from environment.
     /// - Never attaches an Authorization header.
     /// - Uses the fixed GitHub API base URL (https://api.github.com).
-    /// - Prevents automatic redirection outside the explicitly approved GitHub API host.
+    /// - Prevents automatic redirection outside the explicitly approved GitHub API origin (scheme, host, and port).
     /// - Preserves standard timeouts, headers, and response size limits.
     pub fn new_unauthenticated() -> Result<Self, GitHubClientError> {
         Self::new_unauthenticated_with_base_url(DEFAULT_GITHUB_API_BASE)
@@ -89,15 +104,17 @@ impl HttpGitHubClient {
         if is_unauthenticated {
             let parsed_base = reqwest::Url::parse(&base_url_str)
                 .map_err(|e| GitHubClientError::NetworkError(format!("Invalid base URL: {e}")))?;
+            let approved_scheme = parsed_base.scheme().to_string();
             let approved_host = parsed_base.host_str().unwrap_or("").to_string();
             let approved_port = parsed_base.port_or_known_default();
 
             let redirect_policy = reqwest::redirect::Policy::custom(move |attempt| {
-                let target_url = attempt.url();
-                let target_host = target_url.host_str().unwrap_or("");
-                let target_port = target_url.port_or_known_default();
-
-                if target_host == approved_host && target_port == approved_port {
+                if is_redirect_target_approved(
+                    &approved_scheme,
+                    &approved_host,
+                    approved_port,
+                    attempt.url(),
+                ) {
                     attempt.follow()
                 } else {
                     attempt.stop()
@@ -167,7 +184,7 @@ impl HttpGitHubClient {
 
         if (300..=399).contains(&status) {
             return Err(GitHubClientError::NetworkError(format!(
-                "HTTP redirect to {} outside approved host refused",
+                "HTTP redirect to {} outside approved host or scheme refused",
                 resp.headers()
                     .get("location")
                     .and_then(|h| h.to_str().ok())
@@ -617,6 +634,111 @@ mod tests {
                 );
             }
             other => panic!("Expected NetworkError on cross-host redirect, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_anonymous_redirect_policy_enforces_scheme_host_and_port() {
+        // Production baseline: approved origin is https://api.github.com (effective port 443)
+        let approved_base =
+            reqwest::Url::parse(DEFAULT_GITHUB_API_BASE).expect("valid default base");
+        let approved_scheme = approved_base.scheme();
+        let approved_host = approved_base.host_str().unwrap_or("");
+        let approved_port = approved_base.port_or_known_default();
+
+        assert_eq!(approved_scheme, "https");
+        assert_eq!(approved_host, "api.github.com");
+        assert_eq!(approved_port, Some(443));
+
+        // Case 1: Same host and explicit port 443, but downgraded to HTTP -> MUST BE REFUSED
+        let http_downgrade = reqwest::Url::parse("http://api.github.com:443/repos/test").unwrap();
+        assert!(
+            !is_redirect_target_approved(
+                approved_scheme,
+                approved_host,
+                approved_port,
+                &http_downgrade,
+            ),
+            "Same-host, same-port HTTP downgrade redirect MUST be refused"
+        );
+
+        // Case 2: Same host, default HTTP port 80 -> MUST BE REFUSED
+        let http_default = reqwest::Url::parse("http://api.github.com/repos/test").unwrap();
+        assert!(
+            !is_redirect_target_approved(
+                approved_scheme,
+                approved_host,
+                approved_port,
+                &http_default,
+            ),
+            "HTTP redirect to port 80 MUST be refused"
+        );
+
+        // Case 3: HTTPS, but cross-host -> MUST BE REFUSED
+        let cross_host = reqwest::Url::parse("https://evil.example.com/repos/test").unwrap();
+        assert!(
+            !is_redirect_target_approved(
+                approved_scheme,
+                approved_host,
+                approved_port,
+                &cross_host,
+            ),
+            "Cross-host HTTPS redirect MUST be refused"
+        );
+
+        // Case 4: HTTPS, same host, different port -> MUST BE REFUSED
+        let different_port = reqwest::Url::parse("https://api.github.com:8443/repos/test").unwrap();
+        assert!(
+            !is_redirect_target_approved(
+                approved_scheme,
+                approved_host,
+                approved_port,
+                &different_port,
+            ),
+            "Different port redirect MUST be refused"
+        );
+
+        // Case 5: HTTPS, same host, default port 443 (positive control) -> ALLOWED
+        let valid_redirect =
+            reqwest::Url::parse("https://api.github.com/repositories/1413039335").unwrap();
+        assert!(
+            is_redirect_target_approved(
+                approved_scheme,
+                approved_host,
+                approved_port,
+                &valid_redirect,
+            ),
+            "Same-scheme, same-host, same-port redirect should be followed"
+        );
+    }
+
+    #[test]
+    fn test_unsupported_scheme_redirect_is_refused() {
+        let (server_url, server_handle) = run_mock_server(|mut stream| {
+            let _ = read_request_lines(&mut stream);
+            let response = "HTTP/1.1 302 Found\r\nLocation: https://127.0.0.1/escaped\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .expect("write redirect");
+            stream.flush().expect("flush redirect");
+        });
+
+        let client = HttpGitHubClient::new_unauthenticated_with_base_url(&server_url)
+            .expect("create unauthenticated client");
+        let err = client
+            .get_repository("ErenTahiroglu", "AI-Toolchain-Manager")
+            .unwrap_err();
+
+        server_handle.join().expect("join server");
+
+        match err {
+            GitHubClientError::NetworkError(msg) => {
+                assert!(
+                    msg.contains("redirect") || msg.contains("refused"),
+                    "Expected redirect refusal message, got: {msg}"
+                );
+            }
+            other => panic!("Expected NetworkError on scheme mismatch redirect, got: {other:?}"),
         }
     }
 }
