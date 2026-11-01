@@ -623,7 +623,9 @@ mod tests {
                 body.len(),
                 body
             );
-            stream.write_all(response.as_bytes()).expect("write response");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
             stream.flush().expect("flush response");
         });
 
@@ -665,15 +667,15 @@ mod tests {
                 body.len(),
                 body
             );
-            stream.write_all(response.as_bytes()).expect("write response");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
             stream.flush().expect("flush response");
         });
 
-        let client = HttpGitHubClient::new_with_base_url(
-            &server_url,
-            Some("explicit-token".to_string()),
-        )
-        .expect("create authenticated client");
+        let client =
+            HttpGitHubClient::new_with_base_url(&server_url, Some("explicit-token".to_string()))
+                .expect("create authenticated client");
         let repo = client
             .get_repository("ErenTahiroglu", "AI-Toolchain-Manager")
             .expect("fetch repo");
@@ -703,7 +705,9 @@ mod tests {
                 body.len(),
                 body
             );
-            stream.write_all(response.as_bytes()).expect("write response");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
             stream.flush().expect("flush response");
         });
 
@@ -735,7 +739,8 @@ mod tests {
         // Test 2: 404 Not Found
         let (server_url_404, server_handle_404) = run_mock_server(|mut stream| {
             let _ = read_request_lines(&mut stream);
-            let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let response =
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             let _ = stream.write_all(response.as_bytes());
             let _ = stream.flush();
         });
@@ -750,7 +755,8 @@ mod tests {
         // Test 3: 401 Unauthorized
         let (server_url_401, server_handle_401) = run_mock_server(|mut stream| {
             let _ = read_request_lines(&mut stream);
-            let response = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let response =
+                "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             let _ = stream.write_all(response.as_bytes());
             let _ = stream.flush();
         });
@@ -768,7 +774,9 @@ mod tests {
         let (server_url, server_handle) = run_mock_server(|mut stream| {
             let _ = read_request_lines(&mut stream);
             let response = "HTTP/1.1 302 Found\r\nLocation: http://evil.example.com/escaped\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).expect("write redirect");
+            stream
+                .write_all(response.as_bytes())
+                .expect("write redirect");
             stream.flush().expect("flush redirect");
         });
 
