@@ -36,9 +36,7 @@ fn is_redirect_target_approved(
     let target_host = target_url.host_str().unwrap_or("");
     let target_port = target_url.port_or_known_default();
 
-    target_scheme == approved_scheme
-        && target_host == approved_host
-        && target_port == approved_port
+    target_scheme == approved_scheme && target_host == approved_host && target_port == approved_port
 }
 
 impl HttpGitHubClient {
